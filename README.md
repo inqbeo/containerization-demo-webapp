@@ -230,13 +230,11 @@ run the app on **SQLite**, an **in-chart Postgres**, or an **external
 API **HTTPRoute**.
 
 ```sh
-# OCI registry (GHCR)
 helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.1.0
-
-# …or the classic Helm repo (GitHub Pages)
-helm repo add inqbeo https://inqbeo.github.io/containerization-demo-webapp
-helm install todo inqbeo/todo
 ```
+
+The chart and the image live in the same registry (GHCR). Make the packages
+public once in the GitHub UI for anonymous pulls (see below).
 
 External database from a CloudNativePG secret (no DB credentials in your values):
 
@@ -263,6 +261,11 @@ docker pull ghcr.io/inqbeo/containerization-demo-webapp:0.1.0
 
 Tags are plain SemVer without a `v` prefix (`0.1.0`). `latest` tracks the newest
 release. Images are multi-arch (`linux/amd64`, `linux/arm64`).
+
+Both GHCR packages — the image `containerization-demo-webapp` and the chart
+`charts/todo` — are **private until you make them public once**: Org →
+**Packages** → the package → **Package settings** → **Change visibility** →
+**Public**. After that, `docker pull` and `helm pull oci://…` need no login.
 
 ## Image notes
 
@@ -317,8 +320,7 @@ CI (GitHub Actions) runs `go vet`, `go test -race`, a static build, lints and
 renders the Helm chart, then builds the Docker image, runs the container, and
 smoke-tests the simplest use cases (health probe, generated password, login,
 todo CRUD, image size < 30 MB). Pushing a `N.N.N` tag triggers `release.yml`,
-which publishes the multi-arch image to GHCR and the chart to GHCR (OCI) and the
-GitHub Pages Helm repo.
+which publishes the multi-arch image and the Helm chart (OCI) to GHCR.
 
 ---
 

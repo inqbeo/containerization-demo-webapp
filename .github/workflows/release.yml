@@ -3,10 +3,12 @@ name: Release
 # Triggered by pushing a SemVer tag WITHOUT a "v" prefix, e.g.:
 #   git tag 0.1.0 && git push origin 0.1.0
 #
-# Publishes:
-#   * the container image to GHCR (multi-arch), tagged with the version + latest
-#   * the Helm chart to GHCR as an OCI artifact
-#   * the Helm chart to the GitHub Pages Helm repo (classic `helm repo add`)
+# Publishes (both to GHCR — one registry for image and chart):
+#   * the container image (multi-arch), tagged with the version + latest
+#   * the Helm chart as an OCI artifact (oci://ghcr.io/inqbeo/charts/todo)
+#
+# The packages are private until you make them public once in the GitHub UI
+# (Org → Packages → the package → Package settings → Change visibility → Public).
 #
 # Push the first tag (0.1.0) only once everything is known to work.
 
@@ -25,8 +27,8 @@ env:
   REGISTRY: ghcr.io
 
 permissions:
-  contents: write   # push to gh-pages
-  packages: write   # push to GHCR
+  contents: read
+  packages: write   # push image + chart to GHCR
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -72,14 +74,12 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
-  # Helm chart → GHCR (OCI) + GitHub Pages Helm repo.
+  # Helm chart → GHCR (OCI artifact, same registry as the image).
   # ---------------------------------------------------------------------------
   chart:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Install Helm
         run: curl -fsSL https://raw.githubusercontent.com/helm/helm/v3.16.3/scripts/get-helm-3 | DESIRED_VERSION=v3.16.3 bash
@@ -103,26 +103,4 @@ jobs:
             helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
           helm push ".deploy/todo-${{ steps.v.outputs.version }}.tgz" \
             "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
-
-      - name: Publish chart to GitHub Pages Helm repo
-        env:
-          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages || true
-          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
-            git worktree add gh-pages origin/gh-pages
-          else
-            git worktree add --orphan gh-pages
-          fi
-          cp .deploy/todo-${{ steps.v.outputs.version }}.tgz gh-pages/
-          # (Re)build index over all packages present in the branch.
-          helm repo index gh-pages --url "$PAGES_URL"
-          if [ ! -f gh-pages/index.html ]; then
-            printf '<!doctype html><meta charset="utf-8"><title>Inqbeo Helm charts</title><h1>Inqbeo Helm charts</h1><pre>helm repo add inqbeo %s\nhelm install todo inqbeo/todo</pre>\n' "$PAGES_URL" > gh-pages/index.html
-          fi
-          cd gh-pages
-          git add -A
-          git commit -m "Publish todo chart ${{ steps.v.outputs.version }}" || echo "nothing to commit"
-          git push origin HEAD:gh-pages
+          echo "Pushed oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/todo:${{ steps.v.outputs.version }}"

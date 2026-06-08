@@ -17,21 +17,17 @@ It can expose the app via a classic **Ingress** or a Gateway API **HTTPRoute**.
 
 ## Install
 
-The chart is published from GitHub two ways — use whichever you prefer.
-
-### A) OCI registry (GHCR)
+The chart is published to **GHCR as an OCI artifact** — the same registry as the
+container image.
 
 ```sh
 helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.1.0
 ```
 
-### B) Classic Helm repo (GitHub Pages)
-
-```sh
-helm repo add inqbeo https://inqbeo.github.io/containerization-demo-webapp
-helm repo update
-helm install todo inqbeo/todo
-```
+> The GHCR packages are private until made public once (Org → Packages → the
+> package → Package settings → Change visibility → Public). After that, `helm`
+> needs no registry login. You can inspect available versions with:
+> `helm show chart oci://ghcr.io/inqbeo/charts/todo`.
 
 ---
 
