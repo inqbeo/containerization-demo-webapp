@@ -81,9 +81,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.16.3
+      - name: Install Helm
+        run: curl -fsSL https://raw.githubusercontent.com/helm/helm/v3.16.3/scripts/get-helm-3 | DESIRED_VERSION=v3.16.3 bash
 
       - name: Resolve version
         id: v

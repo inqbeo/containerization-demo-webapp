@@ -44,9 +44,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.16.3
+      - name: Install Helm
+        run: curl -fsSL https://raw.githubusercontent.com/helm/helm/v3.16.3/scripts/get-helm-3 | DESIRED_VERSION=v3.16.3 bash
 
       - name: helm lint
         run: helm lint chart
