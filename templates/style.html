@@ -1,0 +1,219 @@
+{{define "head"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.CompanyName}} — TODOs</title>
+<!--
+  All CSS is inlined here on purpose: the app ships as a single binary with no
+  external assets to serve. The UI is "skinnable": the <body data-theme="...">
+  attribute (driven by the `theme` config value) selects one of the palettes
+  defined below. Add a new [data-theme="..."] block to add a skin.
+-->
+<style>
+  /* ---- Theme palettes ---------------------------------------------------- */
+  /* coral — the default Inqbeo coral/pink → orange brand gradient */
+  [data-theme="coral"] {
+    --brand: #e8546b;
+    --brand-2: #f0875a;
+    --brand-strong: #d63e57;
+    --on-brand: #ffffff;
+    --bg-1: #fde7ea;
+    --bg-2: #fdeee2;
+    --bg-base: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #fbfbfd;
+    --ink: #2e2e5b;
+    --muted: #8a8aa3;
+    --line: #ececf3;
+    --done: #2bb673;
+    --danger: #e8546b;
+    --shadow: 0 18px 50px rgba(46, 46, 91, .16);
+  }
+  /* navy — the Inqbeo dark-navy monochrome mark */
+  [data-theme="navy"] {
+    --brand: #2e2e5b;
+    --brand-2: #4a4a86;
+    --brand-strong: #232348;
+    --on-brand: #ffffff;
+    --bg-1: #e7e8f3;
+    --bg-2: #eef0f8;
+    --bg-base: #f4f5fa;
+    --surface: #ffffff;
+    --surface-2: #fafbfd;
+    --ink: #2e2e5b;
+    --muted: #8a8aa3;
+    --line: #e8e9f2;
+    --done: #2bb673;
+    --danger: #e8546b;
+    --shadow: 0 18px 50px rgba(46, 46, 91, .16);
+  }
+  /* dark — dark surfaces with the coral brand as accent */
+  [data-theme="dark"] {
+    --brand: #f0708a;
+    --brand-2: #f5a06f;
+    --brand-strong: #f0708a;
+    --on-brand: #1b1b2e;
+    --bg-1: #20203a;
+    --bg-2: #1a1a30;
+    --bg-base: #14142a;
+    --surface: #23233f;
+    --surface-2: #2a2a4a;
+    --ink: #edeefb;
+    --muted: #9a9ac0;
+    --line: #34345a;
+    --done: #36c98a;
+    --danger: #f0708a;
+    --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1100px 520px at 85% -8%, var(--bg-1) 0%, transparent 60%),
+      radial-gradient(900px 480px at -8% 8%, var(--bg-2) 0%, transparent 58%),
+      var(--bg-base);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 640px; margin: 0 auto; padding: 40px 18px 56px; }
+
+  /* ---- Brand bar / logo -------------------------------------------------- */
+  .brandbar { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+  .logo { display: inline-flex; align-items: center; text-decoration: none; }
+  .logo-img { height: 38px; width: auto; display: block; }
+  .spacer { flex: 1; }
+  .userchip {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: .9rem; color: var(--muted);
+  }
+  .userchip strong { color: var(--ink); font-weight: 600; }
+  .logout {
+    border: 1px solid var(--line); background: var(--surface);
+    color: var(--muted); border-radius: 9px; padding: 7px 12px;
+    font-size: .85rem; font-weight: 600; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .logout:hover { color: var(--brand); border-color: var(--brand); }
+
+  /* ---- Headings ---------------------------------------------------------- */
+  .headline { margin: 0 0 22px; }
+  .headline h1 {
+    margin: 0; font-size: clamp(1.7rem, 4.5vw, 2.3rem); font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .headline h1 .co {
+    background: linear-gradient(95deg, var(--brand), var(--brand-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .headline p { margin: 6px 0 0; color: var(--muted); font-size: .96rem; }
+
+  /* ---- Card -------------------------------------------------------------- */
+  .card {
+    background: var(--surface); border-radius: 18px;
+    box-shadow: var(--shadow); overflow: hidden;
+    border: 1px solid var(--line);
+  }
+
+  /* ---- Add form ---------------------------------------------------------- */
+  .add {
+    display: flex; gap: 10px; padding: 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .field {
+    flex: 1; border: 1px solid var(--line); border-radius: 11px;
+    padding: 12px 14px; font-size: 1rem; outline: none;
+    background: var(--surface); color: var(--ink);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent);
+  }
+  .btn {
+    border: 0; border-radius: 11px; padding: 12px 20px; font-size: 1rem;
+    font-weight: 700; cursor: pointer; color: var(--on-brand);
+    background: linear-gradient(95deg, var(--brand), var(--brand-2));
+    transition: transform .05s ease, filter .15s, box-shadow .15s;
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn:active { transform: translateY(1px); }
+  .btn.block { width: 100%; padding: 13px; }
+
+  /* ---- Todo list --------------------------------------------------------- */
+  ul.todos { list-style: none; margin: 0; padding: 0; }
+  li.todo {
+    display: flex; align-items: center; gap: 13px;
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+  }
+  li.todo:last-child { border-bottom: 0; }
+  .toggle {
+    width: 25px; height: 25px; border-radius: 999px;
+    border: 2px solid var(--line); background: var(--surface);
+    cursor: pointer; flex: 0 0 auto; display: grid; place-items: center;
+    color: transparent; font-size: 14px; line-height: 1;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .toggle:hover { border-color: var(--done); }
+  .todo.is-done .toggle { background: var(--done); border-color: var(--done); color: #fff; }
+  .title { flex: 1; font-size: 1.02rem; word-break: break-word; }
+  .todo.is-done .title { color: var(--muted); text-decoration: line-through; }
+  .meta { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  .icon-btn {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    font-size: 1.05rem; padding: 6px 8px; border-radius: 8px;
+    transition: background .15s, color .15s;
+  }
+  .icon-btn:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+
+  .empty { padding: 44px 18px; text-align: center; color: var(--muted); }
+  .empty .big { font-size: 2.1rem; margin-bottom: 8px; }
+
+  footer.bar {
+    display: flex; justify-content: space-between;
+    padding: 14px 18px; background: var(--surface-2);
+    color: var(--muted); font-size: .85rem;
+  }
+  .pill {
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+    color: var(--brand-strong); border-radius: 999px;
+    padding: 2px 11px; font-weight: 700;
+  }
+
+  /* ---- Login ------------------------------------------------------------- */
+  .login-wrap {
+    min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  }
+  .login-card {
+    width: 100%; max-width: 380px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: var(--shadow); padding: 34px 30px;
+  }
+  .login-card .brandbar { justify-content: center; margin-bottom: 18px; }
+  .login-card h1 { text-align: center; margin: 0 0 4px; font-size: 1.35rem; font-weight: 800; }
+  .login-card .sub { text-align: center; color: var(--muted); font-size: .9rem; margin: 0 0 22px; }
+  .login-card label { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  .login-card .field { width: 100%; }
+  .alert {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    border-radius: 11px; padding: 10px 13px; font-size: .88rem; margin: 4px 0 6px;
+  }
+
+  .credit { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 20px; }
+  form.inline { display: inline; margin: 0; }
+</style>
+{{end}}
+
+{{/* The official Inqbeo logo, served as a standalone SVG per theme:
+     coral (full colour), navy (mono dark), dark (coral mark + white wordmark). */}}
+{{define "logo"}}
+<a class="logo" href="/" aria-label="Inqbeo">
+  <img class="logo-img" src="/static/logo-{{.Theme}}.svg" alt="Inqbeo" height="38">
+</a>
+{{end}}

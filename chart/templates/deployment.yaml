@@ -1,0 +1,104 @@
+{{- include "todo.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "todo.fullname" . }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "todo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "todo.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- /* Roll the pods when the chart-managed auth password changes. Only
+               when we manage an inline password Secret — the generated case has
+               no Secret, and the external case is the user's to manage. */}}
+        {{- if and .Values.app.auth.password (not .Values.app.auth.existingSecret) }}
+        checksum/auth: {{ .Values.app.auth.password | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "todo.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: todo
+          image: {{ include "todo.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: COMPANY_NAME
+              value: {{ .Values.app.companyName | quote }}
+            - name: THEME
+              value: {{ .Values.app.theme | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.app.logLevel | quote }}
+            {{- include "todo.authEnv" . | nindent 12 }}
+            {{- include "todo.dbEnv" . | nindent 12 }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/todoapp
+            {{- if eq .Values.database.type "sqlite" }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+      volumes:
+        # The entrypoint writes config.yaml here; needs to be writable since the
+        # container runs read-only-friendly. An emptyDir is enough — the config
+        # is regenerated from env on every start.
+        - name: config
+          emptyDir: {}
+        {{- if eq .Values.database.type "sqlite" }}
+        - name: data
+          {{- if .Values.database.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.database.sqlite.persistence.existingClaim | default (printf "%s-data" (include "todo.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

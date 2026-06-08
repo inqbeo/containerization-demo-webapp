@@ -1,0 +1,17 @@
+{{- if and (eq .Values.database.type "sqlite") .Values.database.sqlite.persistence.enabled (not .Values.database.sqlite.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-data" (include "todo.fullname" .) }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.database.sqlite.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.database.sqlite.persistence.size | quote }}
+  {{- with .Values.database.sqlite.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

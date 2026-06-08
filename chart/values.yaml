@@ -1,0 +1,177 @@
+# Default values for the Inqbeo "todo" chart.
+# This file is heavily commented because it doubles as course material.
+
+# -- Number of app replicas. Note: sessions are in-memory, so with >1 replica a
+# user may be bounced to the login page when hitting a different pod (a teaching
+# point for "why you externalise session state").
+replicaCount: 1
+
+image:
+  repository: ghcr.io/inqbeo/containerization-demo-webapp
+  # Image tag. Empty → use the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ----------------------------------------------------------------------------
+# Application configuration (these become env vars; docker-entrypoint.sh turns
+# them into the config.yaml the app reads).
+# ----------------------------------------------------------------------------
+app:
+  companyName: "Inqbeo"
+  # UI skin: coral | navy | dark
+  theme: coral
+  logLevel: info
+  auth:
+    username: admin
+    # Password handling, in order of precedence:
+    #   1. existingSecret — reference a Secret you manage (key = passwordKey).
+    #   2. password       — set inline; the chart stores it in a generated Secret.
+    #   3. neither        — the app generates a random password on first start
+    #                       and prints it once to the log (kubectl logs ...).
+    # Remember: the app hashes the password into the database on first start and
+    # then FREEZES it — changing this later has no effect once the DB exists.
+    existingSecret: ""
+    passwordKey: password
+    password: ""
+
+# ----------------------------------------------------------------------------
+# Database backend
+# ----------------------------------------------------------------------------
+database:
+  # Which backend the app uses: "sqlite" or "postgres".
+  type: sqlite
+
+  # ---- SQLite (database.type=sqlite) ----
+  # A single file on a PersistentVolume. Simple; not shared across replicas.
+  sqlite:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      # Use an existing PVC instead of creating one.
+      existingClaim: ""
+
+  # ---- Postgres (database.type=postgres) ----
+  postgres:
+    # "internal" → the chart deploys a Postgres next to the app.
+    # "external" → use an existing database (e.g. CloudNativePG) via a Secret.
+    mode: internal
+
+    # --- internal Postgres (mode=internal) ---
+    internal:
+      image: postgres:16-alpine
+      auth:
+        username: todo
+        database: todo
+        # Password for the in-chart Postgres. If existingSecret is empty and
+        # password is empty, the chart generates one and keeps it stable across
+        # upgrades (via a lookup of the existing Secret).
+        existingSecret: ""
+        passwordKey: password
+        password: ""
+      persistence:
+        enabled: true
+        size: 2Gi
+        storageClass: ""
+      resources: {}
+
+    # --- external Postgres (mode=external) ---
+    # Point at an existing Secret holding the DB credentials. CloudNativePG
+    # creates an "app" Secret (e.g. "<cluster>-app", type kubernetes.io/basic-auth)
+    # containing a ready-to-use connection "uri" plus host/port/user/password/
+    # dbname. We read everything from that Secret — no DB credentials in values.
+    external:
+      # Name of the existing Secret (REQUIRED for mode=external).
+      existingSecret: ""
+      # Preferred: a full connection URI in the Secret (CNPG key: "uri").
+      # Set uriKey to "" to instead assemble the DSN from the individual keys below.
+      uriKey: uri
+      # Used only when uriKey is empty:
+      hostKey: host
+      portKey: port
+      userKey: username
+      passwordKey: password
+      dbnameKey: dbname
+      sslmode: require
+
+# ----------------------------------------------------------------------------
+# Service
+# ----------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+  # The container always listens on 8080.
+  targetPort: 8080
+  annotations: {}
+
+# ----------------------------------------------------------------------------
+# Ingress (classic Ingress API)
+# ----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: todo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: todo-tls
+  #    hosts:
+  #      - todo.example.com
+
+# ----------------------------------------------------------------------------
+# HTTPRoute (Gateway API) — alternative to Ingress
+# ----------------------------------------------------------------------------
+httpRoute:
+  enabled: false
+  # The Gateway(s) this route attaches to.
+  parentRefs:
+    - name: ""
+      # namespace: gateway-system
+      # sectionName: https
+  hostnames:
+    - todo.example.com
+  annotations: {}
+
+# ----------------------------------------------------------------------------
+# Health probes (the app exposes GET /healthz)
+# ----------------------------------------------------------------------------
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    enabled: true
+    initialDelaySeconds: 3
+    periodSeconds: 10
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  fsGroup: 10001
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

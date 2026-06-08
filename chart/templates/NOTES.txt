@@ -1,0 +1,36 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} — "{{ .Values.app.companyName }}" (theme: {{ .Values.app.theme }})
+
+Database backend: {{ .Values.database.type }}{{ if eq .Values.database.type "postgres" }} ({{ .Values.database.postgres.mode }}){{ end }}
+
+1. Reach the app:
+{{- if .Values.ingress.enabled }}
+   Ingress:
+   {{- range .Values.ingress.hosts }}
+     http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+   {{- end }}
+{{- else if .Values.httpRoute.enabled }}
+   HTTPRoute is attached to your Gateway. Try:
+   {{- range .Values.httpRoute.hostnames }}
+     https://{{ . }}
+   {{- end }}
+{{- else }}
+   Port-forward (no Ingress/HTTPRoute configured):
+
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "todo.fullname" . }} 8080:{{ .Values.service.port }}
+     open http://localhost:8080
+{{- end }}
+
+2. Log in (username: {{ .Values.app.auth.username }}):
+{{- if .Values.app.auth.existingSecret }}
+   Password is in your Secret "{{ .Values.app.auth.existingSecret }}" (key: {{ .Values.app.auth.passwordKey }}).
+{{- else if .Values.app.auth.password }}
+   Password was taken from values and stored in Secret "{{ include "todo.authSecretName" . }}":
+
+     kubectl -n {{ .Release.Namespace }} get secret {{ include "todo.authSecretName" . }} -o jsonpath='{.data.password}' | base64 -d; echo
+{{- else }}
+   No password was provided, so the app GENERATED one on first start. Read it from the log:
+
+     kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "todo.fullname" . }} | grep password
+{{- end }}
+
+3. Health probe: GET /healthz (used by the liveness/readiness probes).

@@ -1,0 +1,27 @@
+{{define "login.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body data-theme="{{.Theme}}">
+  <div class="login-wrap">
+    <div>
+      <div class="login-card">
+        <div class="brandbar">{{template "logo" .}}</div>
+        <h1>{{.CompanyName}} — TODOs</h1>
+        <p class="sub">Please sign in to continue.</p>
+
+        {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+
+        <form action="/login" method="post">
+          <label for="username">Username</label>
+          <input class="field" id="username" name="username" type="text" autocomplete="username" autofocus value="admin">
+          <label for="password">Password</label>
+          <input class="field" id="password" name="password" type="password" autocomplete="current-password">
+          <div style="height:18px"></div>
+          <button class="btn block" type="submit">Sign in</button>
+        </form>
+      </div>
+      <p class="credit">Inqbeo containerization &amp; Kubernetes course · demo app</p>
+    </div>
+  </div>
+</body>
+</html>{{end}}

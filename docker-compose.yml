@@ -1,0 +1,41 @@
+# Compose demo for Block 6: "externalise the state".
+#
+# Two services: the todo app and a Postgres container next to it. The app is
+# switched from "SQLite in a volume" to "Postgres container" purely through
+# env vars (DB_DRIVER + DATABASE_URL), which the entrypoint writes into the
+# config file. Nothing in the app code changes.
+#
+#   docker compose up --build
+#
+# Then open http://localhost:8080 — the data now lives in Postgres, not in a
+# local SQLite file.
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      COMPANY_NAME: "Inqbeo (Postgres)"
+      DB_DRIVER: "postgres"
+      DATABASE_URL: "postgres://todo:todo@db:5432/todo?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: todo
+      POSTGRES_PASSWORD: todo
+      POSTGRES_DB: todo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,0 +1,141 @@
+name: CI
+
+# Builds and tests the app, the image, and the Helm chart on every push / PR.
+# Kept simple on purpose — this is course material.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Opt into Node.js 24 for JS-based actions (Node 20 is being retired).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Go: vet, test, and a static (CGO_ENABLED=0) build.
+  # ---------------------------------------------------------------------------
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
+      - name: static build (CGO_ENABLED=0)
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/todo .
+
+  # ---------------------------------------------------------------------------
+  # Helm: lint the chart and render it in several configurations.
+  # ---------------------------------------------------------------------------
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: helm lint
+        run: helm lint chart
+
+      - name: render (sqlite / internal pg / external pg / ingress / httproute)
+        run: |
+          set -e
+          helm template t chart > /dev/null
+          helm template t chart --set database.type=postgres > /dev/null
+          helm template t chart --set database.type=postgres \
+            --set database.postgres.mode=external \
+            --set database.postgres.external.existingSecret=todo-db-app > /dev/null
+          helm template t chart --set ingress.enabled=true > /dev/null
+          helm template t chart --set httpRoute.enabled=true \
+            --set 'httpRoute.parentRefs[0].name=gw' > /dev/null
+
+  # ---------------------------------------------------------------------------
+  # Docker: build the image, run the container, and smoke-test the simplest
+  # use cases (health probe, generated password, login flow, todo CRUD).
+  # ---------------------------------------------------------------------------
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -t todo:ci .
+
+      - name: Check image size (< 30 MB)
+        run: |
+          BYTES=$(docker image inspect todo:ci --format '{{.Size}}')
+          MB=$(( BYTES / 1024 / 1024 ))
+          echo "Image size: ${MB} MB"
+          if [ "$MB" -ge 30 ]; then
+            echo "::error::image is ${MB} MB, expected < 30 MB"
+            exit 1
+          fi
+
+      - name: Run container (SQLite, generated password)
+        run: |
+          docker run -d --name todo -p 8080:8080 \
+            -e COMPANY_NAME="CI Corp" todo:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              echo "healthz is up"; break
+            fi
+            sleep 1
+          done
+
+      - name: /healthz returns ok (no auth required)
+        run: |
+          body=$(curl -fsS http://localhost:8080/healthz)
+          test "$body" = "ok"
+
+      - name: Unauthenticated request redirects to /login
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          echo "GET / -> $code"
+          test "$code" = "303"
+
+      - name: Read generated admin password from logs
+        id: pw
+        run: |
+          PW=$(docker logs todo 2>&1 | grep -oE 'password=[^ ]+' | head -1 | cut -d= -f2)
+          test -n "$PW"
+          echo "password=$PW" >> "$GITHUB_OUTPUT"
+
+      - name: Log in and exercise todo CRUD
+        run: |
+          PW='${{ steps.pw.outputs.password }}'
+          curl -fsS -c /tmp/cj.txt \
+            --data-urlencode "username=admin" \
+            --data-urlencode "password=$PW" \
+            http://localhost:8080/login >/dev/null
+          curl -fsS -b /tmp/cj.txt --data-urlencode 'title=hello from CI' \
+            http://localhost:8080/todos >/dev/null
+          curl -fsS -b /tmp/cj.txt http://localhost:8080/ | grep -q 'hello from CI'
+          echo "todo CRUD over authenticated session works"
+
+      - name: Wrong password is rejected
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            --data-urlencode 'username=admin' \
+            --data-urlencode 'password=definitely-wrong' \
+            http://localhost:8080/login)
+          test "$code" = "401"
+
+      - name: Dump logs and clean up
+        if: always()
+        run: |
+          docker logs todo || true
+          docker rm -f todo || true

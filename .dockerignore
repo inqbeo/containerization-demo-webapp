@@ -1,0 +1,14 @@
+# Keep the build context tiny and reproducible.
+.git
+.github
+.gitignore
+*.md
+README.md
+docs/
+chart/
+data/
+*.db
+config.yaml
+todo
+.DS_Store
+docker-compose.yml

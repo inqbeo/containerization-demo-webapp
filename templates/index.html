@@ -1,0 +1,59 @@
+{{define "index.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body data-theme="{{.Theme}}">
+  <div class="wrap">
+    <div class="brandbar">
+      {{template "logo" .}}
+      <span class="spacer"></span>
+      <span class="userchip">Signed in as <strong>{{.User}}</strong></span>
+      <form class="inline" action="/logout" method="post">
+        <button class="logout" type="submit">Log out</button>
+      </form>
+    </div>
+
+    <div class="headline">
+      <!-- company_name is shown prominently so the lab can instantly see that
+           the configuration took effect. -->
+      <h1><span class="co">{{.CompanyName}}</span> — TODOs</h1>
+      <p>A tiny demo app for the Inqbeo containerization &amp; Kubernetes course.</p>
+    </div>
+
+    <div class="card">
+      <form class="add" action="/todos" method="post">
+        <input class="field" type="text" name="title" placeholder="What needs doing?" autofocus autocomplete="off" maxlength="200">
+        <button class="btn" type="submit">Add</button>
+      </form>
+
+      {{if .Todos}}
+      <ul class="todos">
+        {{range .Todos}}
+        <li class="todo {{if .Done}}is-done{{end}}">
+          <form class="inline" action="/todos/{{.ID}}/toggle" method="post">
+            <button class="toggle" type="submit" title="Toggle done">&#10003;</button>
+          </form>
+          <span class="title">{{.Title}}</span>
+          <span class="meta">{{.CreatedAt}}</span>
+          <form class="inline" action="/todos/{{.ID}}/delete" method="post">
+            <button class="icon-btn" type="submit" title="Delete">&#10005;</button>
+          </form>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <div class="empty">
+        <div class="big">&#127881;</div>
+        Nothing to do. Add your first task above!
+      </div>
+      {{end}}
+
+      <footer class="bar">
+        <span><span class="pill">{{.OpenCount}}</span> open</span>
+        <span><span class="pill">{{.DoneCount}}</span> done</span>
+      </footer>
+    </div>
+
+    <p class="credit">Inqbeo Kubernetes Basics · server-rendered Go · no JavaScript</p>
+  </div>
+</body>
+</html>{{end}}

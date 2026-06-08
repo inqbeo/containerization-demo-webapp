@@ -1,0 +1,127 @@
+{{- if and (eq .Values.database.type "postgres") (eq .Values.database.postgres.mode "internal") }}
+{{- $pg := .Values.database.postgres.internal }}
+{{- $name := include "todo.postgres.fullname" . }}
+{{- /* In-chart Postgres for the "postgres included" mode. A single instance with
+       a PVC — deliberately simple (no HA) because this is a teaching database.
+       For anything real, use an operator like CloudNativePG and the external mode. */}}
+{{- if not $pg.auth.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  password: {{ include "todo.internalPgPassword" . | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "todo.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+{{- if $pg.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $pg.persistence.size | quote }}
+  {{- with $pg.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  # Recreate avoids two pods fighting over the same RWO volume on upgrade.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "todo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "todo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ $pg.image | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ $pg.auth.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ $pg.auth.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if $pg.auth.existingSecret }}
+                  name: {{ $pg.auth.existingSecret | quote }}
+                  key: {{ $pg.auth.passwordKey | quote }}
+                  {{- else }}
+                  name: {{ $name | quote }}
+                  key: password
+                  {{- end }}
+            # Keep data in a subdirectory so the volume root (which may contain
+            # lost+found) doesn't upset initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ $pg.auth.username | quote }}]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ $pg.auth.username | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml $pg.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          {{- if $pg.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

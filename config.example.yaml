@@ -1,0 +1,30 @@
+# Example config for running the app locally WITHOUT the Docker entrypoint.
+# Copy this to config.yaml and point CONFIG_FILE at it:
+#
+#   cp config.example.yaml config.yaml
+#   CONFIG_FILE=./config.yaml ./todo
+
+company_name: "ACME Corp"     # shown in the UI header
+listen_addr: ":8080"          # HTTP listen address
+data_dir: "./data"            # directory for the SQLite file (todo.db)
+log_level: "info"             # debug | info | warn | error
+
+# Storage backend: "sqlite" (default) or "postgres".
+db_driver: "sqlite"
+
+# Only used when db_driver is "postgres". Example:
+#   db_driver: "postgres"
+#   database_url: "postgres://todo:todo@localhost:5432/todo?sslmode=disable"
+database_url: ""
+
+# Form-based login (the lab runs on public machines, so the UI is protected).
+# Single user, no roles: logged in → full access. auth_user defaults to "admin".
+# Leave auth_password empty to have the app generate a random one at startup and
+# print it to the log. The password is hashed (bcrypt) and stored in the
+# database on first start, then frozen — changing it here later has no effect
+# once the database exists.
+auth_user: "admin"
+auth_password: ""
+
+# UI skin: coral (default Inqbeo brand) | navy | dark
+theme: "coral"
