@@ -5,16 +5,17 @@
 # env vars (DB_DRIVER + DATABASE_URL), which the entrypoint writes into the
 # config file. Nothing in the app code changes.
 #
-#   docker compose up --build
+#   APP_PORT=8080 docker compose up --build       # APP_PORT defaults to 8080
 #
-# Then open http://localhost:8080 — the data now lives in Postgres, not in a
-# local SQLite file.
+# Then open http://localhost:${APP_PORT:-8080} — the data now lives in Postgres,
+# not in a local SQLite file. APP_PORT lets each user pick their own host port on a
+# shared machine; the container always listens on 8080.
 
 services:
   app:
     build: .
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
     environment:
       COMPANY_NAME: "Inqbeo (Postgres)"
       DB_DRIVER: "postgres"
