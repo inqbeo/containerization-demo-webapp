@@ -26,11 +26,10 @@ var staticFS embed.FS
 
 // server bundles the dependencies the HTTP handlers need.
 type server struct {
-	cfg      Config
-	store    Store
-	tmpl     *template.Template
-	log      *slog.Logger
-	sessions *sessionStore
+	cfg   Config
+	store Store
+	tmpl  *template.Template
+	log   *slog.Logger
 
 	// Resolved auth credential: the effective username and the bcrypt password
 	// hash (read from the database, not from the config plaintext). See main().
@@ -50,7 +49,6 @@ func newServer(cfg Config, store Store, log *slog.Logger, authUser, authHash str
 		store:    store,
 		tmpl:     tmpl,
 		log:      log,
-		sessions: newSessionStore(),
 		authUser: authUser,
 		authHash: authHash,
 	}, nil
@@ -91,13 +89,21 @@ func (s *server) requireLogin(next http.Handler) http.Handler {
 	})
 }
 
-// loggedIn reports whether the request carries a valid session cookie.
+// loggedIn reports whether the request carries a valid session cookie. The
+// session is looked up in the database (the Store), so it stays valid across
+// restarts. On a store error we fail closed (treat as not logged in) rather
+// than letting the request through.
 func (s *server) loggedIn(r *http.Request) bool {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return false
 	}
-	return s.sessions.valid(c.Value)
+	ok, err := s.store.SessionValid(r.Context(), c.Value)
+	if err != nil {
+		s.log.Error("check session", "err", err)
+		return false
+	}
+	return ok
 }
 
 // ----------------------------------------------------------------------------
@@ -153,8 +159,18 @@ func (s *server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.sessions.create()
+	token, err := randomToken(24)
 	if err != nil {
+		s.log.Error("create session token", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// Best-effort sweep so expired rows don't accumulate (teaching app — no
+	// background janitor). A failure here must not block a valid login.
+	if err := s.store.DeleteExpiredSessions(r.Context()); err != nil {
+		s.log.Warn("prune expired sessions", "err", err)
+	}
+	if err := s.store.CreateSession(r.Context(), token, time.Now().Add(sessionTTL)); err != nil {
 		s.log.Error("create session", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -175,7 +191,9 @@ func (s *server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookieName); err == nil {
-		s.sessions.destroy(c.Value)
+		if err := s.store.DeleteSession(r.Context(), c.Value); err != nil {
+			s.log.Warn("delete session", "err", err)
+		}
 	}
 	// Expire the cookie on the client.
 	http.SetCookie(w, &http.Cookie{

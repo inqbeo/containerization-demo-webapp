@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Pure-Go SQLite driver (no CGO) — registers the "sqlite" driver name.
 	// CGO_ENABLED=0 → static binary → tiny multi-stage image, distroless-capable.
@@ -46,6 +47,23 @@ type Store interface {
 	// back via GetCredential and never overwrite it — so changing the supplied
 	// password env var after the database exists has no effect.
 	SetCredential(ctx context.Context, user, passwordHash string) error
+
+	// CreateSession persists a login session: a random token and its absolute
+	// expiry. Sessions live in the DATABASE (not in process memory), so a login
+	// survives a restart and is shared across replicas — the same "externalise
+	// the state" lesson as the todo data, now applied to session state.
+	CreateSession(ctx context.Context, token string, expiresAt time.Time) error
+
+	// SessionValid reports whether token names a session that exists and has
+	// not yet expired.
+	SessionValid(ctx context.Context, token string) (bool, error)
+
+	// DeleteSession removes a single session (logout).
+	DeleteSession(ctx context.Context, token string) error
+
+	// DeleteExpiredSessions prunes sessions whose expiry has passed so the
+	// table does not grow without bound (this app sweeps on each login).
+	DeleteExpiredSessions(ctx context.Context) error
 
 	Close() error
 }
@@ -119,6 +137,13 @@ CREATE TABLE IF NOT EXISTS auth (
     id            INTEGER PRIMARY KEY CHECK (id = 1),
     username      TEXT    NOT NULL,
     password_hash TEXT    NOT NULL
+);
+-- Login sessions: token -> absolute expiry (unix seconds, an integer so the
+-- exact same SQL works on SQLite and Postgres). Keeping sessions here, rather
+-- than in process memory, is what lets a login survive a restart.
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    expires_at INTEGER NOT NULL
 );`
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("create sqlite schema: %w", err)
@@ -161,6 +186,13 @@ CREATE TABLE IF NOT EXISTS auth (
     id            INTEGER PRIMARY KEY CHECK (id = 1),
     username      TEXT    NOT NULL,
     password_hash TEXT    NOT NULL
+);
+-- Login sessions: token -> absolute expiry (unix seconds as BIGINT, matching
+-- the SQLite integer column so the same SQL runs on both backends). Sessions
+-- in the database survive a restart and are shared across replicas.
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT   PRIMARY KEY,
+    expires_at BIGINT NOT NULL
 );`
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("create postgres schema: %w", err)
@@ -260,6 +292,50 @@ func (s *sqlStore) SetCredential(ctx context.Context, user, passwordHash string)
 		user, passwordHash)
 	if err != nil {
 		return fmt.Errorf("set credential: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) CreateSession(ctx context.Context, token string, expiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.q(`INSERT INTO sessions (token, expires_at) VALUES (?, ?)`),
+		token, expiresAt.Unix())
+	if err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) SessionValid(ctx context.Context, token string) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+	var one int
+	err := s.db.QueryRowContext(ctx,
+		s.q(`SELECT 1 FROM sessions WHERE token = ? AND expires_at > ?`),
+		token, time.Now().Unix()).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil // unknown or expired
+	}
+	if err != nil {
+		return false, fmt.Errorf("session valid: %w", err)
+	}
+	return true, nil
+}
+
+func (s *sqlStore) DeleteSession(ctx context.Context, token string) error {
+	_, err := s.db.ExecContext(ctx, s.q(`DELETE FROM sessions WHERE token = ?`), token)
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		s.q(`DELETE FROM sessions WHERE expires_at <= ?`), time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("delete expired sessions: %w", err)
 	}
 	return nil
 }

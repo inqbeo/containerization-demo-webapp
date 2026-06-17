@@ -33,7 +33,7 @@ Module path: `github.com/inqbeo/todo`
 | `COMPANY_NAME` shown prominently in the UI | "config actually takes effect" — instant proof |
 | Read-only mounted config wins over env | bind mount / ConfigMap precedence |
 | Password hashed & **stored in the DB**, frozen after first init | Initialised state is sticky; secrets ≠ config |
-| In-memory sessions (lost on restart, not shared) | Why you externalise session state |
+| **Sessions stored in the DB** (survive restart, shared across replicas) | Externalising *session* state, just like the data |
 | Graceful shutdown on `SIGTERM` | Container = process, PID 1, signals |
 | `GET /healthz` | Docker HEALTHCHECK → K8s liveness/readiness probes |
 
@@ -45,9 +45,11 @@ The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
 ## Features
 
 - Add, toggle (done/open) and delete to-do items.
-- **Form-based login** with an in-memory session cookie — a real sign-in form,
-  not the browser's Basic Auth popup. One user, no roles or permissions: once
-  logged in, you have full access.
+- **Form-based login** with a server-side session — a real sign-in form, not the
+  browser's Basic Auth popup. The session is **kept in the database** (a
+  `sessions` table, in both SQLite and Postgres), so a login survives a restart
+  and is shared across replicas. One user, no roles or permissions: once logged
+  in, you have full access.
 - Server-rendered HTML with inline CSS — **no JavaScript, no build step, no external assets**.
 - **Skinnable UI**: pick a theme (`coral`, `navy`, `dark`) via config. Inqbeo
   logo and brand colors throughout.
@@ -88,6 +90,21 @@ How the password is established:
    uses it. The supplied password is **ignored**: once the database is
    initialised, changing `AUTH_PASSWORD` has no effect. The credential is owned
    by the data, not by the environment.
+
+**Sessions are stored in the database**, not in process memory. On login the app
+writes a random token + its expiry to a `sessions` table (the same table SQL on
+both SQLite and Postgres) and sets an `HttpOnly` cookie; every request validates
+the cookie against that table. Because the session lives in the database:
+
+- a login **survives a restart** (the cookie still works after the process — or
+  the Pod — comes back), and
+- it is **shared across replicas** (any replica reading the same database
+  recognises the session).
+
+This is the *same* "externalise the state" lesson as the to-do data: swap the
+backend from SQLite to Postgres and nothing in the handlers changes. Sessions
+expire after 12 h; expired rows are swept on each login. (For production you'd
+still add CSRF protection and TLS-only `Secure` cookies.)
 
 `/healthz` is always public so health probes never need credentials.
 
@@ -291,9 +308,9 @@ Both GHCR packages — the image `containerization-demo-webapp` and the chart
 .
 ├── main.go                 # wiring: load config, open store, resolve creds, serve, signals
 ├── config.go               # Config struct, loading, defaults, validation
-├── store.go                # Store interface + SQLite/Postgres implementations
+├── store.go                # Store interface + SQLite/Postgres impl (todos, credential, sessions)
 ├── handlers.go             # HTTP handlers (todo + form auth) + embedded templates
-├── auth.go                 # password hashing, sessions, credential resolution
+├── auth.go                 # password hashing, session tokens, credential resolution
 ├── *_test.go               # unit/integration tests
 ├── templates/
 │   ├── style.html          # shared CSS (themes) + logo partial
