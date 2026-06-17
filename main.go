@@ -41,6 +41,7 @@ func main() {
 		"data_dir", cfg.DataDir,
 		"db_driver", cfg.DBDriver,
 		"theme", cfg.Theme,
+		"log_requests", cfg.LogRequests,
 	)
 
 	store, err := openStore(cfg)

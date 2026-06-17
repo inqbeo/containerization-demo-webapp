@@ -74,7 +74,44 @@ func (s *server) routes() http.Handler {
 	app.HandleFunc("POST /todos/{id}/delete", s.handleDelete)
 	mux.Handle("/", s.requireLogin(app))
 
+	// Optional access log: when LOG_REQUESTS=true (config log_requests), wrap
+	// everything so each request is logged once. Off by default to keep the
+	// logs quiet; turning it on is a one-env-var demo of an access log.
+	if s.cfg.LogRequests {
+		return s.logRequests(mux)
+	}
 	return mux
+}
+
+// logRequests is middleware that logs one line per HTTP request: method, path,
+// response status and how long it took. Wrapped around the whole mux so it sees
+// every route (including /healthz and static assets).
+func (s *server) logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		s.log.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"remote", r.RemoteAddr,
+		)
+	})
+}
+
+// statusRecorder wraps http.ResponseWriter to remember the status code written,
+// so the access log can report it (the default 200 stands if WriteHeader is
+// never called, which is how Go's http treats an implicit 200).
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
 }
 
 // requireLogin redirects unauthenticated requests to the login page. There are

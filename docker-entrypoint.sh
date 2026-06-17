@@ -37,6 +37,7 @@ company_name: "${COMPANY_NAME:-ACME Corp}"
 listen_addr: ":8080"
 data_dir: "${DATA_DIR:-/data}"
 log_level: "${LOG_LEVEL:-info}"
+log_requests: $( [ "${LOG_REQUESTS:-}" = "true" ] && echo true || echo false )
 db_driver: "${DB_DRIVER:-sqlite}"
 database_url: "${DATABASE_URL:-}"
 auth_user: "${AUTH_USERNAME:-admin}"

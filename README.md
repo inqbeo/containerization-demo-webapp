@@ -55,6 +55,8 @@ The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
   logo and brand colors throughout.
 - Inputs are HTML-escaped by `html/template` (no XSS through a todo title).
 - Structured logging to stdout via `log/slog` (12-factor: logs go to stdout).
+  Set `LOG_REQUESTS=true` to also emit a one-line **access log** per request
+  (method, path, status, duration).
 - Two storage backends, selectable by config:
   - **`sqlite`** (default) — a `todo.db` file under `data_dir`, pure-Go driver
     [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (no CGO).
@@ -146,6 +148,7 @@ theme: "coral"              # coral | navy | dark
 | `COMPANY_NAME` | `company_name` | `ACME Corp` |
 | `DATA_DIR` | `data_dir` | `/data` |
 | `LOG_LEVEL` | `log_level` | `info` |
+| `LOG_REQUESTS` | `log_requests` | `false` (set `true` to log every request) |
 | `DB_DRIVER` | `db_driver` | `sqlite` |
 | `DATABASE_URL` | `database_url` | *(empty)* |
 | `AUTH_USERNAME` | `auth_user` | `admin` |

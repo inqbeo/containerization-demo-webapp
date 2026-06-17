@@ -23,6 +23,11 @@ type Config struct {
 	DataDir     string `yaml:"data_dir"`
 	LogLevel    string `yaml:"log_level"`
 
+	// LogRequests, when true, logs one line per HTTP request (method, path,
+	// status, duration). Off by default; driven by the LOG_REQUESTS env var
+	// through the entrypoint. Handy for showing access logs in the lab.
+	LogRequests bool `yaml:"log_requests"`
+
 	// DBDriver selects the storage backend: "sqlite" (default, a file under
 	// DataDir) or "postgres" (an external database addressed by DatabaseURL).
 	// This is the "externalise the state" lever used in Block 6 / Day 2.

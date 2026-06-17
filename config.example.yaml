@@ -8,6 +8,7 @@ company_name: "ACME Corp"     # shown in the UI header
 listen_addr: ":8080"          # HTTP listen address
 data_dir: "./data"            # directory for the SQLite file (todo.db)
 log_level: "info"             # debug | info | warn | error
+log_requests: false           # true → log one line per HTTP request (access log)
 
 # Storage backend: "sqlite" (default) or "postgres".
 db_driver: "sqlite"
