@@ -127,7 +127,6 @@ theme: "coral"              # coral | navy | dark
 | Env | Config field | Default |
 |---|---|---|
 | `COMPANY_NAME` | `company_name` | `ACME Corp` |
-| `APP_PORT` | `listen_addr` (`:{APP_PORT}`) | `8080` |
 | `DATA_DIR` | `data_dir` | `/data` |
 | `LOG_LEVEL` | `log_level` | `info` |
 | `DB_DRIVER` | `db_driver` | `sqlite` |
@@ -136,6 +135,14 @@ theme: "coral"              # coral | navy | dark
 | `AUTH_PASSWORD` | `auth_password` | *(empty → generated)* |
 | `THEME` | `theme` | `coral` |
 | `CONFIG_FILE` | (path of the config file itself) | `/etc/todoapp/config.yaml` |
+
+The container **always listens on `8080`** (`listen_addr` is fixed) — choose the
+port you reach it on *outside* the container with `docker run -p HOST:8080` (or a
+Service `port` → `targetPort: 8080`). `listen_addr` is deliberately not derived
+from an env var: a Kubernetes Service named `app` injects `APP_PORT=tcp://…:8080`
+into every pod, which would otherwise corrupt the generated config. Need a
+different internal port anyway? Mount your own config file (it wins over the
+generated one).
 
 **Precedence rule (important for the lab):** if the config file already exists
 at start (e.g. a read-only bind mount or a Kubernetes ConfigMap), it is **not**
@@ -185,7 +192,7 @@ CONFIG_FILE=./config.yaml ./todo
 docker build -t todo:1 .
 
 docker run -d --name todo -p 8080:8080 \
-  -e COMPANY_NAME="Inqbeo" -e APP_PORT=8080 \
+  -e COMPANY_NAME="Inqbeo" \
   -e AUTH_PASSWORD="lab-secret" \
   -v todo-data:/data \
   todo:1

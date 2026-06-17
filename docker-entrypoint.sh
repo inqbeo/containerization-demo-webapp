@@ -24,9 +24,17 @@ if [ -f "$CONFIG_FILE" ]; then
 else
   echo "entrypoint: generating $CONFIG_FILE from environment"
   mkdir -p "$(dirname "$CONFIG_FILE")"
+  # listen_addr is fixed at :8080 ON PURPOSE — the container always listens on
+  # 8080; remapping to another port is an OUTSIDE-the-container concern
+  # (docker -p HOST:8080, or a Service port -> targetPort 8080). It is NOT
+  # derived from an env var, because when a Kubernetes Service named "app"
+  # exists, Kubernetes injects APP_PORT=tcp://<clusterIP>:8080 into every pod
+  # (legacy service-link vars). That would produce listen_addr ":tcp://...:8080"
+  # and break the app. (Need a different port anyway? Mount a config file —
+  # an existing config wins over this generated one, see above.)
   cat > "$CONFIG_FILE" <<EOF
 company_name: "${COMPANY_NAME:-ACME Corp}"
-listen_addr: ":${APP_PORT:-8080}"
+listen_addr: ":8080"
 data_dir: "${DATA_DIR:-/data}"
 log_level: "${LOG_LEVEL:-info}"
 db_driver: "${DB_DRIVER:-sqlite}"
