@@ -194,10 +194,25 @@ CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT   PRIMARY KEY,
     expires_at BIGINT NOT NULL
 );`
-	if _, err := s.db.ExecContext(ctx, schema); err != nil {
+	// When several replicas start against an empty database at once, a
+	// transaction-scoped advisory lock makes exactly one run the DDL at a time
+	// (the rest block, then find the tables already there) — this closes the
+	// small window where concurrent CREATE TABLE could collide. The lock is
+	// released automatically on commit. (SQLite needs none: single file, single
+	// connection, one process.)
+	const migrateLockKey int64 = 4711003
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create postgres schema: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after a successful Commit
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("create postgres schema: lock: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("create postgres schema: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ----------------------------------------------------------------------------
