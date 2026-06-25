@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -71,13 +72,31 @@ type Store interface {
 // openStore builds the Store selected by the config. Both backends share the
 // same database/sql-based implementation; only the driver, DSN and a few SQL
 // dialect details differ.
-func openStore(cfg Config) (Store, error) {
+func openStore(cfg Config, log *slog.Logger) (Store, error) {
 	switch cfg.DBDriver {
 	case driverPostgres:
-		return openPostgresStore(cfg.DatabaseURL)
+		return openPostgresStore(cfg.DatabaseURL, cfg.ConnectTimeout(), log)
 	default:
-		return openSQLiteStore(cfg.DataDir)
+		return openSQLiteStore(cfg.DataDir, cfg.ConnectTimeout(), log)
 	}
+}
+
+// connect verifies the database is actually reachable, bounded by timeout, and
+// logs both the attempt and its outcome. This exists because sql.Open does NOT
+// open a connection — it is lazy — so an unreachable database (e.g. blocked by a
+// Kubernetes NetworkPolicy) would otherwise only surface on the first query, or
+// hang the startup with no log line at all. That silent hang is exactly what
+// turns a blocked database into a CrashLoopBackOff with empty logs: the readiness
+// probe restarts the Pod before anything is ever printed. The failure is logged
+// at ERROR so it surfaces at every configured log level (debug|info|warn|error).
+func (s *sqlStore) connect(ctx context.Context, driver string, timeout time.Duration, log *slog.Logger) error {
+	log.Info("connecting to database", "driver", driver, "timeout", timeout.String())
+	if err := s.db.PingContext(ctx); err != nil {
+		log.Error("database connection failed", "driver", driver, "timeout", timeout.String(), "err", err)
+		return fmt.Errorf("connect to %s database (timeout %s): %w", driver, timeout, err)
+	}
+	log.Info("database connection established", "driver", driver)
+	return nil
 }
 
 // ----------------------------------------------------------------------------
@@ -100,7 +119,7 @@ const (
 
 // openSQLiteStore opens (and if needed creates) the SQLite database file at
 // {dataDir}/todo.db and ensures the schema exists.
-func openSQLiteStore(dataDir string) (Store, error) {
+func openSQLiteStore(dataDir string, timeout time.Duration, log *slog.Logger) (Store, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir %q: %w", dataDir, err)
 	}
@@ -114,7 +133,16 @@ func openSQLiteStore(dataDir string) (Store, error) {
 	db.SetMaxOpenConns(1)
 
 	s := &sqlStore{db: db, placeholder: placeholderQuestion}
-	if err := s.initSQLite(context.Background()); err != nil {
+	// The connect + schema bring-up share a single deadline so startup can never
+	// hang silently (a SQLite open is local, but we keep the path uniform with
+	// Postgres for one code path and one set of log lines).
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := s.connect(ctx, driverSQLite, timeout, log); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := s.initSQLite(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -157,14 +185,23 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 // openPostgresStore connects to Postgres via the pure-Go pgx stdlib driver and
 // ensures the schema exists. The DSN comes from config (database_url).
-func openPostgresStore(dsn string) (Store, error) {
+func openPostgresStore(dsn string, timeout time.Duration, log *slog.Logger) (Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 
 	s := &sqlStore{db: db, placeholder: placeholderDollar}
-	if err := s.initPostgres(context.Background()); err != nil {
+	// Bound the whole bring-up (connect + schema DDL) with the configured timeout.
+	// Without it, an unreachable Postgres makes BeginTx block forever and the Pod
+	// crashloops with empty logs — the bug this guards against.
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := s.connect(ctx, driverPostgres, timeout, log); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := s.initPostgres(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

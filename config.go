@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,6 +38,15 @@ type Config struct {
 	// "postgres://todo:todo@db:5432/todo?sslmode=disable". Ignored for sqlite.
 	DatabaseURL string `yaml:"database_url"`
 
+	// DBConnectTimeout bounds the INITIAL database connection attempt at startup,
+	// as a Go duration string (e.g. "5s"). This matters in Kubernetes: when the
+	// database is unreachable (a NetworkPolicy blocking egress, a wrong host, a
+	// Pod not up yet), the connect would otherwise block indefinitely with no log
+	// output. The readiness probe then restarts the Pod into CrashLoopBackOff with
+	// no clue why. A bounded attempt fails fast and gets logged instead. Default
+	// "5s"; driven by the DB_CONNECT_TIMEOUT env var through the entrypoint.
+	DBConnectTimeout string `yaml:"db_connect_timeout"`
+
 	// AuthUser / AuthPassword guard the UI with HTTP Basic Auth — the lab runs
 	// on public machines, so the app must not be wide open. AuthUser defaults
 	// to "admin". If AuthPassword is empty, main() generates a random one at
@@ -61,6 +71,9 @@ const (
 
 // defaultConfigPath is used when the CONFIG_FILE env var is not set.
 const defaultConfigPath = "/etc/todoapp/config.yaml"
+
+// defaultDBConnectTimeout is the fallback for db_connect_timeout when unset.
+const defaultDBConnectTimeout = "5s"
 
 // configPath returns the path of the config file to read. This is the ONLY
 // environment variable the Go program itself looks at.
@@ -98,6 +111,9 @@ func loadConfig(path string) (Config, error) {
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
 	}
+	if cfg.DBConnectTimeout == "" {
+		cfg.DBConnectTimeout = defaultDBConnectTimeout
+	}
 	if cfg.DBDriver == "" {
 		cfg.DBDriver = driverSQLite
 	}
@@ -113,6 +129,11 @@ func loadConfig(path string) (Config, error) {
 	// Validate the log level so we fail fast on typos.
 	if _, ok := parseLogLevel(cfg.LogLevel); !ok {
 		return Config{}, fmt.Errorf("invalid log_level %q (want debug|info|warn|error)", cfg.LogLevel)
+	}
+
+	// Validate the connect timeout so a typo fails fast at startup, not later.
+	if d, err := time.ParseDuration(cfg.DBConnectTimeout); err != nil || d <= 0 {
+		return Config{}, fmt.Errorf("invalid db_connect_timeout %q (want a positive Go duration like %q)", cfg.DBConnectTimeout, defaultDBConnectTimeout)
 	}
 
 	// Validate the database selection.
@@ -133,6 +154,16 @@ func loadConfig(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ConnectTimeout returns the parsed db_connect_timeout. loadConfig has already
+// validated it, so the parse cannot fail here; the fallback is defensive only.
+func (c Config) ConnectTimeout() time.Duration {
+	d, err := time.ParseDuration(c.DBConnectTimeout)
+	if err != nil || d <= 0 {
+		d, _ = time.ParseDuration(defaultDBConnectTimeout)
+	}
+	return d
 }
 
 // parseLogLevel maps a config string to an slog.Level. The bool reports

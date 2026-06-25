@@ -40,11 +40,12 @@ func main() {
 		"listen_addr", cfg.ListenAddr,
 		"data_dir", cfg.DataDir,
 		"db_driver", cfg.DBDriver,
+		"db_connect_timeout", cfg.ConnectTimeout().String(),
 		"theme", cfg.Theme,
 		"log_requests", cfg.LogRequests,
 	)
 
-	store, err := openStore(cfg)
+	store, err := openStore(cfg, log)
 	if err != nil {
 		log.Error("failed to open store", "err", err)
 		os.Exit(1)

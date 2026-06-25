@@ -6,6 +6,8 @@ DATABASE_URL from the individual DB_* parts when no full URL is provided.
 */}}
 {{- define "todo.dbEnv" -}}
 {{- $db := .Values.database -}}
+- name: DB_CONNECT_TIMEOUT
+  value: {{ $db.connectTimeout | quote }}
 {{- if eq $db.type "sqlite" }}
 - name: DB_DRIVER
   value: sqlite

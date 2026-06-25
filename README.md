@@ -136,6 +136,7 @@ data_dir: "/data"           # directory for the SQLite file (todo.db)
 log_level: "info"           # debug | info | warn | error
 db_driver: "sqlite"         # sqlite | postgres
 database_url: ""           # only used when db_driver is "postgres"
+db_connect_timeout: "5s"    # bound the initial DB connection attempt at startup
 auth_user: "admin"          # login username
 auth_password: ""          # empty → generated & logged on first start
 theme: "coral"              # coral | navy | dark
@@ -151,6 +152,7 @@ theme: "coral"              # coral | navy | dark
 | `LOG_REQUESTS` | `log_requests` | `false` (set `true` to log every request) |
 | `DB_DRIVER` | `db_driver` | `sqlite` |
 | `DATABASE_URL` | `database_url` | *(empty)* |
+| `DB_CONNECT_TIMEOUT` | `db_connect_timeout` | `5s` (initial DB connect timeout; an unreachable DB fails fast & is logged instead of crashlooping silently) |
 | `AUTH_USERNAME` | `auth_user` | `admin` |
 | `AUTH_PASSWORD` | `auth_password` | *(empty → generated)* |
 | `THEME` | `theme` | `coral` |

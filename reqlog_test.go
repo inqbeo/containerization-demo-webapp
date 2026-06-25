@@ -13,7 +13,7 @@ import (
 // output and toggle LogRequests.
 func newTestServerWithLog(t *testing.T, logRequests bool) (*server, *bytes.Buffer) {
 	t.Helper()
-	store, err := openSQLiteStore(t.TempDir())
+	store, err := openTestStore(t, t.TempDir())
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

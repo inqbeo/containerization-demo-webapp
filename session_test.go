@@ -25,7 +25,7 @@ func TestSessionPersistsAcrossRestart(t *testing.T) {
 	cfg := Config{CompanyName: "TestCo", Theme: "coral", AuthUser: testUser}
 
 	// --- first "process": open the store, log in, capture the cookie ---
-	store1, err := openSQLiteStore(dir)
+	store1, err := openTestStore(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestSessionPersistsAcrossRestart(t *testing.T) {
 	}
 
 	// --- second "process": reopen the SAME database directory ---
-	store2, err := openSQLiteStore(dir)
+	store2, err := openTestStore(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestSessionPersistsAcrossRestart(t *testing.T) {
 // TestSessionStoreLifecycle covers the Store's session methods directly: a valid
 // session, an expired one, deletion, and pruning.
 func TestSessionStoreLifecycle(t *testing.T) {
-	store, err := openSQLiteStore(t.TempDir())
+	store, err := openTestStore(t, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

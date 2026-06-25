@@ -18,6 +18,12 @@ db_driver: "sqlite"
 #   database_url: "postgres://todo:todo@localhost:5432/todo?sslmode=disable"
 database_url: ""
 
+# Timeout for the INITIAL database connection at startup (Go duration, e.g.
+# "5s"). If the database is unreachable (blocked by a NetworkPolicy, wrong host,
+# not up yet), the app fails fast and logs why instead of hanging silently until
+# a probe kills it into CrashLoopBackOff. Default: 5s.
+db_connect_timeout: "5s"
+
 # Form-based login (the lab runs on public machines, so the UI is protected).
 # Single user, no roles: logged in → full access. auth_user defaults to "admin".
 # Leave auth_password empty to have the app generate a random one at startup and

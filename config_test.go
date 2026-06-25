@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // writeConfig writes content to a temp file and returns its path.
@@ -36,6 +37,30 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 	if cfg.AuthUser != "admin" {
 		t.Errorf("auth_user = %q, want admin", cfg.AuthUser)
+	}
+	if cfg.DBConnectTimeout != "5s" {
+		t.Errorf("db_connect_timeout = %q, want 5s", cfg.DBConnectTimeout)
+	}
+	if got := cfg.ConnectTimeout(); got != 5*time.Second {
+		t.Errorf("ConnectTimeout() = %s, want 5s", got)
+	}
+}
+
+func TestLoadConfigConnectTimeoutOverride(t *testing.T) {
+	cfg, err := loadConfig(writeConfig(t, "db_connect_timeout: \"2500ms\"\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := cfg.ConnectTimeout(); got != 2500*time.Millisecond {
+		t.Errorf("ConnectTimeout() = %s, want 2.5s", got)
+	}
+}
+
+func TestLoadConfigInvalidConnectTimeout(t *testing.T) {
+	for _, v := range []string{"nope", "0s", "-1s"} {
+		if _, err := loadConfig(writeConfig(t, "db_connect_timeout: \""+v+"\"\n")); err == nil {
+			t.Errorf("expected error for db_connect_timeout %q, got nil", v)
+		}
 	}
 }
 

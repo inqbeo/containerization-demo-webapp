@@ -10,16 +10,25 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testUser = "admin"
 const testPass = "s3cret-pw"
 
+// openTestStore opens a throwaway SQLite store for tests: a quiet (discarded)
+// logger and a generous connect timeout. Keeps the call sites short now that
+// openSQLiteStore takes a timeout and logger.
+func openTestStore(t *testing.T, dir string) (Store, error) {
+	t.Helper()
+	return openSQLiteStore(dir, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
 // newTestServer builds a server backed by a real (temp-dir) SQLite store with a
 // known credential, ready to drive via httptest.
 func newTestServer(t *testing.T) *server {
 	t.Helper()
-	store, err := openSQLiteStore(t.TempDir())
+	store, err := openTestStore(t, t.TempDir())
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -201,7 +210,7 @@ func TestCredentialFrozenAfterInit(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// First start: initialise with "first-pw".
-	store1, err := openSQLiteStore(dir)
+	store1, err := openTestStore(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +225,7 @@ func TestCredentialFrozenAfterInit(t *testing.T) {
 	}
 
 	// Second start with a DIFFERENT supplied password — must be ignored.
-	store2, err := openSQLiteStore(dir)
+	store2, err := openTestStore(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

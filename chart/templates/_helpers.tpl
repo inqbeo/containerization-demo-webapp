@@ -98,7 +98,9 @@ Resolve the internal Postgres password, preserving it across upgrades.
 {{- if not (has $t (list "sqlite" "postgres")) -}}
 {{- fail (printf "database.type must be 'sqlite' or 'postgres', got %q" $t) -}}
 {{- end -}}
-{{- if not (has .Values.app.theme (list "coral" "navy" "dark")) -}}
+{{- /* "sleepy" is an intentionally undocumented joke theme: accepted, but kept
+       out of the message below so it stays an easter egg. */ -}}
+{{- if not (has .Values.app.theme (list "coral" "navy" "dark" "sleepy")) -}}
 {{- fail (printf "app.theme must be coral|navy|dark, got %q" .Values.app.theme) -}}
 {{- end -}}
 {{- if eq $t "postgres" -}}

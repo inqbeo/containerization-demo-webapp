@@ -45,6 +45,13 @@ database:
   # Which backend the app uses: "sqlite" or "postgres".
   type: sqlite
 
+  # Timeout for the app's INITIAL database connection at startup (Go duration,
+  # e.g. "5s"). Bounds the connect attempt so an unreachable database (a
+  # NetworkPolicy blocking egress, a wrong host, Postgres not up yet) fails fast
+  # and is logged, instead of hanging until a probe restarts the Pod into
+  # CrashLoopBackOff with empty logs. Applies to both sqlite and postgres.
+  connectTimeout: "5s"
+
   # ---- SQLite (database.type=sqlite) ----
   # A single file on a PersistentVolume. Simple; not shared across replicas.
   sqlite:

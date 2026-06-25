@@ -40,6 +40,7 @@ log_level: "${LOG_LEVEL:-info}"
 log_requests: $( [ "${LOG_REQUESTS:-}" = "true" ] && echo true || echo false )
 db_driver: "${DB_DRIVER:-sqlite}"
 database_url: "${DATABASE_URL:-}"
+db_connect_timeout: "${DB_CONNECT_TIMEOUT:-5s}"
 auth_user: "${AUTH_USERNAME:-admin}"
 auth_password: "${AUTH_PASSWORD:-}"
 theme: "${THEME:-coral}"
