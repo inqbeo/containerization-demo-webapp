@@ -46,8 +46,9 @@
     --danger: #e8546b;
     --shadow: 0 18px 50px rgba(46, 46, 91, .16);
   }
-  /* dark — dark surfaces with the coral brand as accent */
-  [data-theme="dark"] {
+  /* dark — dark surfaces with the coral brand as accent.
+     sleepy — same dark palette, only the logo differs (an undocumented joke). */
+  [data-theme="dark"], [data-theme="sleepy"] {
     --brand: #f0708a;
     --brand-2: #f5a06f;
     --brand-strong: #f0708a;
@@ -85,6 +86,8 @@
   .brandbar { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
   .logo { display: inline-flex; align-items: center; text-decoration: none; }
   .logo-img { height: 38px; width: auto; display: block; }
+  /* the sleepy joke logo carries more artwork, so give it a little more room */
+  [data-theme="sleepy"] .logo-img { height: 52px; }
   .spacer { flex: 1; }
   .userchip {
     display: inline-flex; align-items: center; gap: 9px;

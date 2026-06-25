@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224.01 60.31">
+  <defs>
+    <linearGradient id="sleepy-accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ea4c87"/>
+      <stop offset="1" stop-color="#f49a6f"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <!-- a tired IT nerd, fast asleep at the keyboard -->
+    <g transform="translate(6 4)">
+      <!-- head -->
+      <circle cx="26" cy="28" r="22" fill="#f6caa6" stroke="#caa078" stroke-width="1.5"/>
+      <!-- messy hair -->
+      <path d="M6 22 q4-14 20-15 t18 11 q-6-6-18-6 T6 22Z" fill="#5a4632"/>
+      <!-- glasses -->
+      <g fill="none" stroke="#2e2e2e" stroke-width="2.4">
+        <circle cx="17" cy="27" r="7.5"/>
+        <circle cx="35" cy="27" r="7.5"/>
+        <path d="M24.5 27 h3"/>
+        <path d="M9.5 25 l-4-2"/>
+      </g>
+      <!-- sleepy closed eyes behind the glasses -->
+      <g fill="none" stroke="#3a2e22" stroke-width="2" stroke-linecap="round">
+        <path d="M13 28 q4 3 8 0"/>
+        <path d="M31 28 q4 3 8 0"/>
+      </g>
+      <!-- relaxed snoozing mouth -->
+      <path d="M20 39 q6 4 12 0" fill="none" stroke="#a4694a" stroke-width="2" stroke-linecap="round"/>
+      <!-- little drool, because deep sleep -->
+      <path d="M32 41 q1.5 4 0 7 q-3 0-3-3 z" fill="#9fd3ff"/>
+    </g>
+    <!-- floating Zzz -->
+    <g fill="url(#sleepy-accent)" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-weight="700">
+      <text x="52" y="22" font-size="12">z</text>
+      <text x="60" y="14" font-size="16">z</text>
+      <text x="70" y="9" font-size="21">Z</text>
+    </g>
+    <!-- wordmark -->
+    <text x="92" y="40" fill="#ffffff" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" letter-spacing="-1">inqbeo</text>
+  </g>
+</svg>

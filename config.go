@@ -51,7 +51,7 @@ type Config struct {
 }
 
 // validThemes are the skins the embedded CSS knows about.
-var validThemes = map[string]bool{"coral": true, "navy": true, "dark": true}
+var validThemes = map[string]bool{"coral": true, "navy": true, "dark": true, "sleepy": true}
 
 // Recognised database drivers.
 const (
