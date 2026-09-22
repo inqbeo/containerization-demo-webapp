@@ -103,6 +103,36 @@ Resolve the internal Postgres password, preserving it across upgrades.
 {{- if not (has .Values.app.theme (list "coral" "navy" "dark" "sleepy")) -}}
 {{- fail (printf "app.theme must be coral|navy|dark, got %q" .Values.app.theme) -}}
 {{- end -}}
+{{- if .Values.route.enabled -}}
+{{- $tls := .Values.route.tls -}}
+{{- if $tls.enabled -}}
+{{- if not (has $tls.termination (list "edge" "passthrough" "reencrypt")) -}}
+{{- fail (printf "route.tls.termination must be edge|passthrough|reencrypt, got %q" $tls.termination) -}}
+{{- end -}}
+{{- if not (has $tls.insecureEdgeTerminationPolicy (list "" "None" "Allow" "Redirect")) -}}
+{{- fail (printf "route.tls.insecureEdgeTerminationPolicy must be None|Allow|Redirect, got %q" $tls.insecureEdgeTerminationPolicy) -}}
+{{- end -}}
+{{- /* The OpenShift router rejects "Allow" on a passthrough route. */ -}}
+{{- if and (eq $tls.termination "passthrough") (eq $tls.insecureEdgeTerminationPolicy "Allow") -}}
+{{- fail "route.tls.insecureEdgeTerminationPolicy=Allow is not valid for termination=passthrough (use None or Redirect)" -}}
+{{- end -}}
+{{- if and (eq $tls.termination "passthrough") .Values.route.path -}}
+{{- fail "route.path is not supported for termination=passthrough" -}}
+{{- end -}}
+{{- if and (eq $tls.termination "passthrough") (or $tls.certificate $tls.key $tls.caCertificate) -}}
+{{- fail "route.tls certificate/key/caCertificate cannot be set for termination=passthrough (the pod serves the certificate)" -}}
+{{- end -}}
+{{- if and $tls.destinationCACertificate (ne $tls.termination "reencrypt") -}}
+{{- fail "route.tls.destinationCACertificate is only valid for termination=reencrypt" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (has .Values.route.wildcardPolicy (list "None" "Subdomain")) -}}
+{{- fail (printf "route.wildcardPolicy must be None or Subdomain, got %q" .Values.route.wildcardPolicy) -}}
+{{- end -}}
+{{- if and (eq .Values.route.wildcardPolicy "Subdomain") (not .Values.route.host) -}}
+{{- fail "route.wildcardPolicy=Subdomain requires route.host" -}}
+{{- end -}}
+{{- end -}}
 {{- if eq $t "postgres" -}}
 {{- $m := .Values.database.postgres.mode -}}
 {{- if not (has $m (list "internal" "external")) -}}

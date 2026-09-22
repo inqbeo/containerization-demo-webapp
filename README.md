@@ -255,8 +255,8 @@ docker run -d --name todo -p 8080:8080 \
 
 A Helm chart lives in [`chart/`](chart) and is published from this repo. It can
 run the app on **SQLite**, an **in-chart Postgres**, or an **external
-(CloudNativePG-compatible) database**, and expose it via **Ingress** or a Gateway
-API **HTTPRoute**.
+(CloudNativePG-compatible) database**, and expose it via **Ingress**, an
+OpenShift **Route**, or a Gateway API **HTTPRoute**.
 
 ```sh
 helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.1.0
@@ -322,7 +322,7 @@ Both GHCR packages — the image `containerization-demo-webapp` and the chart
 │   ├── index.html          # todo list page
 │   └── login.html          # login page
 ├── static/                 # official Inqbeo logo SVGs (one per theme)
-├── chart/                  # Helm chart (SQLite / Postgres / Ingress / HTTPRoute)
+├── chart/                  # Helm chart (SQLite / Postgres / Ingress / Route / HTTPRoute)
 ├── config.example.yaml     # sample config for local runs
 ├── docker-entrypoint.sh    # builds the config file from env vars
 ├── Dockerfile              # multi-stage build

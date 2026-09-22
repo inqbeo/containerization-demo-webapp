@@ -1,0 +1,52 @@
+{{- if .Values.route.enabled }}
+{{- $fullName := include "todo.fullname" . }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "todo.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- /* An empty host lets OpenShift generate <name>-<namespace>.<apps-domain>. */}}
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.route.path }}
+  path: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $fullName }}
+    weight: 100
+  port:
+    {{- /* The Service names its port "http"; the router resolves it by name. */}}
+    targetPort: http
+  {{- if .Values.route.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+    {{- with .Values.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+    {{- with .Values.route.tls.certificate }}
+    certificate: |
+      {{- . | trim | nindent 6 }}
+    {{- end }}
+    {{- with .Values.route.tls.key }}
+    key: |
+      {{- . | trim | nindent 6 }}
+    {{- end }}
+    {{- with .Values.route.tls.caCertificate }}
+    caCertificate: |
+      {{- . | trim | nindent 6 }}
+    {{- end }}
+    {{- with .Values.route.tls.destinationCACertificate }}
+    destinationCACertificate: |
+      {{- . | trim | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  wildcardPolicy: {{ .Values.route.wildcardPolicy }}
+{{- end }}

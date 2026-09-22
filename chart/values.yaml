@@ -135,6 +135,43 @@ ingress:
   #      - todo.example.com
 
 # ----------------------------------------------------------------------------
+# Route (OpenShift) — alternative to Ingress on OpenShift/OKD clusters
+# ----------------------------------------------------------------------------
+# OpenShift can also create a Route for you from an Ingress, but a native Route
+# gives you direct control over TLS termination and the router-specific
+# annotations (haproxy.router.openshift.io/...).
+route:
+  enabled: false
+  # Hostname for the Route. Leave empty and OpenShift generates one for you:
+  # <route-name>-<namespace>.<cluster apps domain>.
+  host: ""
+  # Optional path prefix. Only valid for http/https (non-passthrough) routes.
+  path: ""
+  # Router annotations, e.g.:
+  #   haproxy.router.openshift.io/timeout: 60s
+  #   haproxy.router.openshift.io/balance: roundrobin
+  annotations: {}
+  # None | Subdomain
+  wildcardPolicy: None
+  tls:
+    # false → plain HTTP Route (no TLS section at all).
+    enabled: true
+    # edge        — the router terminates TLS, talks HTTP to the pod (what this
+    #               app wants: it serves plain HTTP on 8080).
+    # passthrough — TLS goes straight to the pod (app would have to serve TLS).
+    # reencrypt   — router terminates, then opens a new TLS connection to the pod.
+    termination: edge
+    # What to do with plain HTTP requests: None | Allow | Redirect.
+    insecureEdgeTerminationPolicy: Redirect
+    # Bring your own certificate (PEM). Leave empty to use the router's default
+    # wildcard certificate — the usual choice for a course cluster.
+    certificate: ""
+    key: ""
+    caCertificate: ""
+    # Only for termination=reencrypt: CA the router uses to trust the pod.
+    destinationCACertificate: ""
+
+# ----------------------------------------------------------------------------
 # HTTPRoute (Gateway API) — alternative to Ingress
 # ----------------------------------------------------------------------------
 httpRoute:

@@ -4,13 +4,13 @@ description: |
   Inqbeo "todo" demo app — the running example of the Inqbeo containerization &
   Kubernetes course. Deploys the app with SQLite, an in-chart Postgres, or an
   external (CloudNativePG-compatible) database, and optionally exposes it via an
-  Ingress or a Gateway API HTTPRoute.
+  Ingress, an OpenShift Route, or a Gateway API HTTPRoute.
 type: application
 
 # Chart version — bump on every chart change (SemVer, no "v" prefix).
-version: 0.1.4
+version: 0.2.0
 # Application version — the container image tag this chart defaults to.
-appVersion: "0.1.4"
+appVersion: "0.2.0"
 
 home: https://github.com/inqbeo/containerization-demo-webapp
 sources:
