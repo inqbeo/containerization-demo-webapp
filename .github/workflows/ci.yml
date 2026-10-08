@@ -50,7 +50,7 @@ jobs:
       - name: helm lint
         run: helm lint chart
 
-      - name: render (sqlite / internal pg / external pg / ingress / httproute)
+      - name: render (sqlite / internal pg / external pg / ingress / httproute / servicemonitor)
         run: |
           set -e
           helm template t chart > /dev/null
@@ -61,6 +61,8 @@ jobs:
           helm template t chart --set ingress.enabled=true > /dev/null
           helm template t chart --set httpRoute.enabled=true \
             --set 'httpRoute.parentRefs[0].name=gw' > /dev/null
+          helm template t chart --set serviceMonitor.enabled=true \
+            --set serviceMonitor.labels.release=kube-prometheus-stack > /dev/null
 
   # ---------------------------------------------------------------------------
   # Docker: build the image, run the container, and smoke-test the simplest
@@ -124,6 +126,13 @@ jobs:
             http://localhost:8080/todos >/dev/null
           curl -fsS -b /tmp/cj.txt http://localhost:8080/ | grep -q 'hello from CI'
           echo "todo CRUD over authenticated session works"
+
+      - name: /metrics exposes the app metrics (no auth required)
+        run: |
+          curl -fsS http://localhost:8080/metrics > /tmp/metrics.txt
+          grep -E '^db_up 1$' /tmp/metrics.txt
+          grep -E '^todos_total\{state="open"\} 1$' /tmp/metrics.txt
+          grep -E '^http_requests_total\{path="/todos",status="303"\}' /tmp/metrics.txt
 
       - name: Wrong password is rejected
         run: |

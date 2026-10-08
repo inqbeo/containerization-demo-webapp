@@ -22,7 +22,7 @@ The chart is published to **GHCR as an OCI artifact** — the same registry as t
 container image.
 
 ```sh
-helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.1.0
+helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.3.0
 ```
 
 > The GHCR packages are private until made public once (Org → Packages → the
@@ -154,6 +154,21 @@ helm install todo oci://ghcr.io/inqbeo/charts/todo \
   --set httpRoute.hostnames[0]=todo.example.com
 ```
 
+### 7. Prometheus scraping via ServiceMonitor
+
+The app always serves `GET /metrics`. With the Prometheus Operator installed
+(e.g. kube-prometheus-stack), let it scrape the app:
+
+```sh
+helm install todo oci://ghcr.io/inqbeo/charts/todo \
+  --set serviceMonitor.enabled=true \
+  --set serviceMonitor.labels.release=kube-prometheus-stack
+```
+
+The `release` label must match your Prometheus' `serviceMonitorSelector`
+(kube-prometheus-stack selects on its own release name by default). Enabling
+this without the `monitoring.coreos.com` CRDs makes the install fail.
+
 ---
 
 ## Authentication
@@ -212,6 +227,10 @@ it at the source and reset the stored credential in the database.
 | `route.tls.certificate` / `key` / `caCertificate` / `destinationCACertificate` | `""` | Custom PEM material; empty → router default certificate. |
 | `httpRoute.enabled` | `false` | Create a Gateway API HTTPRoute. |
 | `probes.liveness.enabled` / `probes.readiness.enabled` | `true` | Probe `GET /healthz`. |
+| `serviceMonitor.enabled` | `false` | Create a Prometheus Operator ServiceMonitor for `GET /metrics`. |
+| `serviceMonitor.labels` | `{}` | Extra labels, e.g. `release: kube-prometheus-stack`. |
+| `serviceMonitor.namespace` | `""` | Namespace for the ServiceMonitor; empty → release namespace. |
+| `serviceMonitor.interval` / `scrapeTimeout` | `30s` / `10s` | Scrape timing. |
 | `resources` / `nodeSelector` / `tolerations` / `affinity` | `{}` / `{}` / `[]` / `{}` | Standard scheduling knobs. |
 
 See [`values.yaml`](values.yaml) for the fully commented reference.

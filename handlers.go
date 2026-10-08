@@ -30,6 +30,7 @@ type server struct {
 	store Store
 	tmpl  *template.Template
 	log   *slog.Logger
+	met   *metrics
 
 	// Resolved auth credential: the effective username and the bcrypt password
 	// hash (read from the database, not from the config plaintext). See main().
@@ -49,6 +50,7 @@ func newServer(cfg Config, store Store, log *slog.Logger, authUser, authHash str
 		store:    store,
 		tmpl:     tmpl,
 		log:      log,
+		met:      newMetrics(store),
 		authUser: authUser,
 		authHash: authHash,
 	}, nil
@@ -61,6 +63,7 @@ func (s *server) routes() http.Handler {
 
 	// Public routes.
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.Handle("GET /metrics", s.met.handler()) // Prometheus scrape target
 	mux.Handle("GET /static/", http.FileServerFS(staticFS)) // logo SVGs (public)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.HandleFunc("POST /login", s.handleLoginSubmit)
@@ -77,10 +80,12 @@ func (s *server) routes() http.Handler {
 	// Optional access log: when LOG_REQUESTS=true (config log_requests), wrap
 	// everything so each request is logged once. Off by default to keep the
 	// logs quiet; turning it on is a one-env-var demo of an access log.
+	// Request counting for /metrics is always on.
+	var h http.Handler = s.met.countRequests(mux)
 	if s.cfg.LogRequests {
-		return s.logRequests(mux)
+		h = s.logRequests(h)
 	}
-	return mux
+	return h
 }
 
 // logRequests is middleware that logs one line per HTTP request: method, path,

@@ -198,6 +198,24 @@ probes:
     initialDelaySeconds: 3
     periodSeconds: 10
 
+# ----------------------------------------------------------------------------
+# Metrics (the app exposes GET /metrics in Prometheus format, always on)
+# ----------------------------------------------------------------------------
+# A ServiceMonitor tells the Prometheus Operator to scrape this app. Requires
+# the monitoring.coreos.com CRDs (e.g. from kube-prometheus-stack) — enabling
+# this on a cluster without them makes the install fail.
+serviceMonitor:
+  enabled: false
+  # Extra labels so your Prometheus picks the object up. kube-prometheus-stack
+  # by default only selects ServiceMonitors labelled with its release name:
+  #   release: kube-prometheus-stack
+  labels: {}
+  # Create the ServiceMonitor in another namespace (e.g. "monitoring") instead
+  # of the release namespace. Empty → release namespace.
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+
 serviceAccount:
   create: true
   annotations: {}

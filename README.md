@@ -36,9 +36,11 @@ Module path: `github.com/inqbeo/todo`
 | **Sessions stored in the DB** (survive restart, shared across replicas) | Externalising *session* state, just like the data |
 | Graceful shutdown on `SIGTERM` | Container = process, PID 1, signals |
 | `GET /healthz` | Docker HEALTHCHECK → K8s liveness/readiness probes |
+| `GET /metrics` (Prometheus format) | Observability: scraping, ServiceMonitor, PromQL |
 
 The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
-**ConfigMap**, `/data` → **PVC**, `/healthz` → **probes**, port → **Service**.
+**ConfigMap**, `/data` → **PVC**, `/healthz` → **probes**, port → **Service**,
+`/metrics` → **ServiceMonitor**.
 
 ---
 
@@ -57,6 +59,8 @@ The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
 - Structured logging to stdout via `log/slog` (12-factor: logs go to stdout).
   Set `LOG_REQUESTS=true` to also emit a one-line **access log** per request
   (method, path, status, duration).
+- **Prometheus metrics** on `GET /metrics` (public, always on) — see
+  [Metrics](#metrics).
 - Two storage backends, selectable by config:
   - **`sqlite`** (default) — a `todo.db` file under `data_dir`, pure-Go driver
     [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (no CGO).
@@ -65,8 +69,9 @@ The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
 
 Only the standard library is used for HTTP (`net/http`, Go 1.22+ method
 patterns) and templating (`html/template`, embedded with `embed`). The only
-third-party dependencies are the two DB drivers, a YAML parser, and
-`golang.org/x/crypto/bcrypt` for password hashing.
+third-party dependencies are the two DB drivers, a YAML parser,
+`golang.org/x/crypto/bcrypt` for password hashing, and the official Prometheus
+client (`prometheus/client_golang`) for `/metrics`.
 
 ### Themes
 
@@ -184,8 +189,35 @@ overwritten. A mounted, finished config beats the environment.
 | `POST` | `/todos/{id}/toggle` | required | Toggle done state → redirect to `/` |
 | `POST` | `/todos/{id}/delete` | required | Delete todo → redirect to `/` |
 | `GET` | `/healthz` | public | `200 ok` if the store pings, else `503` |
+| `GET` | `/metrics` | public | Prometheus metrics (text exposition format) |
 
 Unauthenticated requests to protected routes redirect to `/login`.
+
+---
+
+## Metrics
+
+`GET /metrics` serves Prometheus metrics (via `promhttp`, code in
+[`metrics.go`](metrics.go)). Public, like `/healthz`, so Prometheus needs no
+credentials. Besides the standard `go_*` and `process_*` metrics:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `http_requests_total{path,status}` | counter | Handled requests. `path` is the **route pattern** (`/todos/{id}/toggle`), not the raw URL, so ids don't explode the series count; 404s are `path="unmatched"`. |
+| `todos_total{state}` | gauge | Todos by `state` (`open` / `done`), read from the DB at scrape time. |
+| `db_up` | gauge | `1` if the database answers a ping, `0` otherwise. |
+
+Some PromQL to try:
+
+```promql
+sum by (path) (rate(http_requests_total[5m]))       # requests/s per route
+sum(rate(http_requests_total{status=~"5.."}[5m]))   # error rate
+sum(todos_total)                                    # all todos
+db_up == 0                                          # alert: database unreachable
+```
+
+In Kubernetes, enable the chart's `serviceMonitor.enabled` value so a
+Prometheus Operator (e.g. kube-prometheus-stack) scrapes it automatically.
 
 ---
 
@@ -259,7 +291,7 @@ run the app on **SQLite**, an **in-chart Postgres**, or an **external
 OpenShift **Route**, or a Gateway API **HTTPRoute**.
 
 ```sh
-helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.1.0
+helm install todo oci://ghcr.io/inqbeo/charts/todo --version 0.3.0
 ```
 
 The chart and the image live in the same registry (GHCR). Make the packages
