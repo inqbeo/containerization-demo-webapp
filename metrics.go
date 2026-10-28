@@ -48,6 +48,19 @@ func (m *metrics) handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
+// routes is the handler for the separate metrics listener (metrics_addr,
+// default :8081): GET /metrics and nothing else — no login, no middleware.
+// Keeping metrics off the app port means an Ingress/Route, which only points at
+// the app port, can never expose them.
+//
+// Side effect: Prometheus scrapes no longer pass through countRequests, so they
+// do not show up as path="/metrics" in http_requests_total any more.
+func (m *metrics) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", m.handler())
+	return mux
+}
+
 // countRequests is middleware that increments http_requests_total. The path
 // label is the matched ROUTE PATTERN (e.g. "/todos/{id}/toggle"), not the raw
 // URL — otherwise every todo id would create a new time series.

@@ -29,9 +29,11 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 USER app
 VOLUME ["/data"]
-EXPOSE 8080
+# 8080 = the app, 8081 = GET /metrics (ops port, keep it cluster-internal).
+EXPOSE 8080 8081
 
-# Container-level health check; later becomes the Kubernetes liveness/readiness probe.
+# Container-level health check. In Kubernetes this splits into two probes:
+# liveness → /livez (process alive), readiness → /readyz (= /healthz, DB reachable).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
   CMD wget -qO- http://localhost:8080/healthz >/dev/null 2>&1 || exit 1
 

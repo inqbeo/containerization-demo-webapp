@@ -36,7 +36,7 @@ type Store interface {
 	Add(ctx context.Context, title string) error
 	Toggle(ctx context.Context, id int64) error
 	Delete(ctx context.Context, id int64) error
-	Ping(ctx context.Context) error // used by /healthz
+	Ping(ctx context.Context) error // used by /readyz (= /healthz) and db_up
 
 	// GetCredential returns the auth credential persisted in the database.
 	// ok is false when the database has not been initialised with one yet
@@ -86,7 +86,7 @@ func openStore(cfg Config, log *slog.Logger) (Store, error) {
 // open a connection — it is lazy — so an unreachable database (e.g. blocked by a
 // Kubernetes NetworkPolicy) would otherwise only surface on the first query, or
 // hang the startup with no log line at all. That silent hang is exactly what
-// turns a blocked database into a CrashLoopBackOff with empty logs: the readiness
+// turns a blocked database into a CrashLoopBackOff with empty logs: the liveness
 // probe restarts the Pod before anything is ever printed. The failure is logged
 // at ERROR so it surfaces at every configured log level (debug|info|warn|error).
 func (s *sqlStore) connect(ctx context.Context, driver string, timeout time.Duration, log *slog.Logger) error {

@@ -88,7 +88,7 @@ jobs:
 
       - name: Run container (SQLite, generated password)
         run: |
-          docker run -d --name todo -p 8080:8080 \
+          docker run -d --name todo -p 8080:8080 -p 8081:8081 \
             -e COMPANY_NAME="CI Corp" todo:ci
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
@@ -97,10 +97,12 @@ jobs:
             sleep 1
           done
 
-      - name: /healthz returns ok (no auth required)
+      - name: /healthz, /livez, /readyz return ok (no auth required)
         run: |
-          body=$(curl -fsS http://localhost:8080/healthz)
-          test "$body" = "ok"
+          for p in healthz livez readyz; do
+            body=$(curl -fsS http://localhost:8080/$p)
+            test "$body" = "ok"
+          done
 
       - name: Unauthenticated request redirects to /login
         run: |
@@ -127,9 +129,10 @@ jobs:
           curl -fsS -b /tmp/cj.txt http://localhost:8080/ | grep -q 'hello from CI'
           echo "todo CRUD over authenticated session works"
 
-      - name: /metrics exposes the app metrics (no auth required)
+      - name: /metrics on the separate port 8081 (no auth), not on the app port
         run: |
-          curl -fsS http://localhost:8080/metrics > /tmp/metrics.txt
+          ! curl -fsS http://localhost:8080/metrics | grep -q '^db_up'
+          curl -fsS http://localhost:8081/metrics > /tmp/metrics.txt
           grep -E '^db_up 1$' /tmp/metrics.txt
           grep -E '^todos\{state="open"\} 1$' /tmp/metrics.txt
           grep -E '^http_requests_total\{path="/todos",status="303"\}' /tmp/metrics.txt

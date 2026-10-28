@@ -33,7 +33,13 @@ func newTestServer(t *testing.T) *server {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+	return newTestServerWithStore(t, store)
+}
 
+// newTestServerWithStore builds a test server on top of the given store, with
+// the known test credential.
+func newTestServerWithStore(t *testing.T, store Store) *server {
+	t.Helper()
 	hash, err := hashPassword(testPass)
 	if err != nil {
 		t.Fatalf("hash: %v", err)

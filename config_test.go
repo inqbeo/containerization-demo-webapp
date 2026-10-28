@@ -29,6 +29,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("listen_addr = %q, want :8080", cfg.ListenAddr)
 	}
+	if cfg.MetricsAddr != ":8081" {
+		t.Errorf("metrics_addr = %q, want :8081", cfg.MetricsAddr)
+	}
 	if cfg.DataDir != "/data" {
 		t.Errorf("data_dir = %q, want /data", cfg.DataDir)
 	}
@@ -53,6 +56,12 @@ func TestLoadConfigConnectTimeoutOverride(t *testing.T) {
 	}
 	if got := cfg.ConnectTimeout(); got != 2500*time.Millisecond {
 		t.Errorf("ConnectTimeout() = %s, want 2.5s", got)
+	}
+}
+
+func TestLoadConfigMetricsAddrMustDiffer(t *testing.T) {
+	if _, err := loadConfig(writeConfig(t, "listen_addr: \":9000\"\nmetrics_addr: \":9000\"\n")); err == nil {
+		t.Error("expected error when metrics_addr equals listen_addr, got nil")
 	}
 }
 

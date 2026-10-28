@@ -41,6 +41,8 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: metrics
+              containerPort: 8081
           env:
             - name: COMPANY_NAME
               value: {{ .Values.app.companyName | quote }}
@@ -51,9 +53,12 @@ spec:
             {{- include "todo.authEnv" . | nindent 12 }}
             {{- include "todo.dbEnv" . | nindent 12 }}
           {{- if .Values.probes.liveness.enabled }}
+          # Liveness ≠ readiness: /livez never touches the database (a restart
+          # does not bring a lost DB back), /readyz takes the Pod out of the
+          # Service while the DB is unreachable.
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /livez
               port: http
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
@@ -61,7 +66,7 @@ spec:
           {{- if .Values.probes.readiness.enabled }}
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}

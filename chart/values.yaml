@@ -115,6 +115,9 @@ service:
   port: 80
   # The container always listens on 8080.
   targetPort: 8080
+  # Second, cluster-internal port for GET /metrics (container port 8081).
+  # Only the ServiceMonitor uses it; Ingress/Route/HTTPRoute stay on "http".
+  metricsPort: 8081
   annotations: {}
 
 # ----------------------------------------------------------------------------
@@ -186,8 +189,12 @@ httpRoute:
   annotations: {}
 
 # ----------------------------------------------------------------------------
-# Health probes (the app exposes GET /healthz)
+# Health probes
 # ----------------------------------------------------------------------------
+# Liveness  → GET /livez:  "should the kubelet restart me?" Always 200 while the
+#             process runs — a lost database is not fixed by a restart.
+# Readiness → GET /readyz: "should I get traffic?" 503 while the database is
+#             unreachable, so the Pod leaves the Service until it is back.
 probes:
   liveness:
     enabled: true
@@ -199,7 +206,8 @@ probes:
     periodSeconds: 10
 
 # ----------------------------------------------------------------------------
-# Metrics (the app exposes GET /metrics in Prometheus format, always on)
+# Metrics (GET /metrics in Prometheus format, always on, on the separate
+# container port 8081 / Service port "metrics" — never via the Ingress)
 # ----------------------------------------------------------------------------
 # A ServiceMonitor tells the Prometheus Operator to scrape this app. Requires
 # the monitoring.coreos.com CRDs (e.g. from kube-prometheus-stack) — enabling

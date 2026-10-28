@@ -35,12 +35,13 @@ Module path: `github.com/inqbeo/todo`
 | Password hashed & **stored in the DB**, frozen after first init | Initialised state is sticky; secrets ≠ config |
 | **Sessions stored in the DB** (survive restart, shared across replicas) | Externalising *session* state, just like the data |
 | Graceful shutdown on `SIGTERM` | Container = process, PID 1, signals |
-| `GET /healthz` | Docker HEALTHCHECK → K8s liveness/readiness probes |
-| `GET /metrics` (Prometheus format) | Observability: scraping, ServiceMonitor, PromQL |
+| `GET /livez` + `GET /readyz` (`/healthz` = alias of `/readyz`) | Docker HEALTHCHECK → K8s **liveness ≠ readiness** probes |
+| `GET /metrics` (Prometheus format) on a separate ops port `:8081` | Separate ops port → Service port `metrics` → ServiceMonitor; PromQL |
+| Keeps running when the DB goes away (503 + `db_up 0`) | Failure modes: degrade, don't crash-loop |
 
 The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
-**ConfigMap**, `/data` → **PVC**, `/healthz` → **probes**, port → **Service**,
-`/metrics` → **ServiceMonitor**.
+**ConfigMap**, `/data` → **PVC**, `/livez` / `/readyz` → **probes**, port → **Service**,
+`/metrics` on `:8081` → **ServiceMonitor**.
 
 ---
 
@@ -59,7 +60,8 @@ The 1:1 mapping to Kubernetes is the whole point: `COMPANY_NAME`/config →
 - Structured logging to stdout via `log/slog` (12-factor: logs go to stdout).
   Set `LOG_REQUESTS=true` to also emit a one-line **access log** per request
   (method, path, status, duration).
-- **Prometheus metrics** on `GET /metrics` (public, always on) — see
+- **Prometheus metrics** on `GET /metrics` on a **separate port** (`:8081`,
+  config `metrics_addr`), never routed through the Ingress; always on — see
   [Metrics](#metrics).
 - Two storage backends, selectable by config:
   - **`sqlite`** (default) — a `todo.db` file under `data_dir`, pure-Go driver
@@ -113,7 +115,8 @@ backend from SQLite to Postgres and nothing in the handlers changes. Sessions
 expire after 12 h; expired rows are swept on each login. (For production you'd
 still add CSRF protection and TLS-only `Secure` cookies.)
 
-`/healthz` is always public so health probes never need credentials.
+`/livez`, `/readyz` and `/healthz` are always public so health probes never need
+credentials.
 
 > Grab the generated password on first run:
 > ```sh
@@ -136,7 +139,8 @@ The config file path comes from `CONFIG_FILE` (default
 
 ```yaml
 company_name: "ACME Corp"   # display name in the UI header
-listen_addr: ":8080"        # HTTP listen address
+listen_addr: ":8080"        # HTTP listen address (the app)
+metrics_addr: ":8081"       # separate listener for GET /metrics; never exposed via Ingress
 data_dir: "/data"           # directory for the SQLite file (todo.db)
 log_level: "info"           # debug | info | warn | error
 db_driver: "sqlite"         # sqlite | postgres
@@ -169,7 +173,8 @@ Service `port` → `targetPort: 8080`). `listen_addr` is deliberately not derive
 from an env var: a Kubernetes Service named `app` injects `APP_PORT=tcp://…:8080`
 into every pod, which would otherwise corrupt the generated config. Need a
 different internal port anyway? Mount your own config file (it wins over the
-generated one).
+generated one). The same holds for **`metrics_addr`**, fixed at `:8081`: the
+second listener serves only `GET /metrics` and must differ from `listen_addr`.
 
 **Precedence rule (important for the lab):** if the config file already exists
 at start (e.g. a read-only bind mount or a Kubernetes ConfigMap), it is **not**
@@ -188,22 +193,49 @@ overwritten. A mounted, finished config beats the environment.
 | `POST` | `/todos` | required | Create todo from form field `title` → redirect to `/` |
 | `POST` | `/todos/{id}/toggle` | required | Toggle done state → redirect to `/` |
 | `POST` | `/todos/{id}/delete` | required | Delete todo → redirect to `/` |
-| `GET` | `/healthz` | public | `200 ok` if the store pings, else `503` |
-| `GET` | `/metrics` | public | Prometheus metrics (text exposition format) |
+| `GET` | `/livez` | public | Always `200 ok` — no DB access (liveness probe) |
+| `GET` | `/readyz` | public | `200 ok` if the store pings, else `503 unavailable` (readiness probe) |
+| `GET` | `/healthz` | public | Alias of `/readyz` (Docker `HEALTHCHECK`, Day-1 demos) |
 
-Unauthenticated requests to protected routes redirect to `/login`.
+Unauthenticated requests to protected routes redirect to `/login`. If the
+database cannot be reached, they answer `503` instead (see below).
+
+On the **metrics port** (`metrics_addr`, default `:8081`) there is exactly one
+route: `GET /metrics` (public, Prometheus text format). Everything else there is
+a `404`, and `/metrics` does not exist on the app port.
+
+---
+
+## Behaviour without a database
+
+At **start**, the app fails fast: if the database is unreachable within
+`db_connect_timeout`, it logs an ERROR and exits `1` (→ CrashLoopBackOff, visibly).
+**While running**, losing the database does not stop the process: pages answer
+`503` with a "Database unavailable" page, `/readyz` turns `503`, `/livez` stays
+`200` and `/metrics` reports `db_up 0`. When the database is back, everything
+recovers **without a restart** (`database/sql` reconnects on its own).
+
+```sh
+docker compose stop db
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/livez    # 200
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/readyz   # 503
+docker compose exec app wget -qO- localhost:8081/metrics | grep ^db_up   # db_up 0
+docker compose start db                                          # recovers, no restart
+```
 
 ---
 
 ## Metrics
 
 `GET /metrics` serves Prometheus metrics (via `promhttp`, code in
-[`metrics.go`](metrics.go)). Public, like `/healthz`, so Prometheus needs no
-credentials. Besides the standard `go_*` and `process_*` metrics:
+[`metrics.go`](metrics.go)) on a **separate port** (`:8081`, config
+`metrics_addr`), never routed through the Ingress; always on. No login, so
+Prometheus needs no credentials — the protection is that the port stays
+cluster-internal. Besides the standard `go_*` and `process_*` metrics:
 
 | Metric | Type | Meaning |
 |---|---|---|
-| `http_requests_total{path,status}` | counter | Handled requests. `path` is the **route pattern** (`/todos/{id}/toggle`), not the raw URL, so ids don't explode the series count; 404s are `path="unmatched"`. |
+| `http_requests_total{path,status}` | counter | Requests handled on the app port. `path` is the **route pattern** (`/todos/{id}/toggle`), not the raw URL, so ids don't explode the series count; 404s are `path="unmatched"`. Scrapes (port 8081) are not counted. |
 | `todos{state}` | gauge | Todos by `state` (`open` / `done`), read from the DB at scrape time. |
 | `db_up` | gauge | `1` if the database answers a ping, `0` otherwise. |
 
@@ -217,7 +249,8 @@ db_up == 0                                          # alert: database unreachabl
 ```
 
 In Kubernetes, enable the chart's `serviceMonitor.enabled` value so a
-Prometheus Operator (e.g. kube-prometheus-stack) scrapes it automatically.
+Prometheus Operator (e.g. kube-prometheus-stack) scrapes it automatically via
+the Service port `metrics`.
 
 ---
 
@@ -307,8 +340,8 @@ helm install todo oci://ghcr.io/inqbeo/charts/todo \
 ```
 
 See [`chart/README.md`](chart/README.md) for all values and scenarios. This is
-the Day-2 payoff: `COMPANY_NAME`/config → ConfigMap/env, `/data` → PVC, `/healthz`
-→ probes, port → Service, plus the SQLite↔Postgres switch.
+the Day-2 payoff: `COMPANY_NAME`/config → ConfigMap/env, `/data` → PVC, `/livez` /
+`/readyz` → probes, port → Service, plus the SQLite↔Postgres switch.
 
 ---
 
@@ -346,13 +379,15 @@ Both GHCR packages — the image `containerization-demo-webapp` and the chart
 ├── main.go                 # wiring: load config, open store, resolve creds, serve, signals
 ├── config.go               # Config struct, loading, defaults, validation
 ├── store.go                # Store interface + SQLite/Postgres impl (todos, credential, sessions)
-├── handlers.go             # HTTP handlers (todo + form auth) + embedded templates
+├── handlers.go             # HTTP handlers (todo + form auth + probes) + embedded templates
+├── metrics.go              # Prometheus metrics + the separate :8081 listener
 ├── auth.go                 # password hashing, session tokens, credential resolution
 ├── *_test.go               # unit/integration tests
 ├── templates/
 │   ├── style.html          # shared CSS (themes) + logo partial
 │   ├── index.html          # todo list page
-│   └── login.html          # login page
+│   ├── login.html          # login page
+│   └── error.html          # 503 "Database unavailable" page
 ├── static/                 # official Inqbeo logo SVGs (one per theme)
 ├── chart/                  # Helm chart (SQLite / Postgres / Ingress / Route / HTTPRoute)
 ├── config.example.yaml     # sample config for local runs

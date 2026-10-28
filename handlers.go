@@ -61,9 +61,11 @@ func newServer(cfg Config, store Store, log *slog.Logger, authUser, authHash str
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Public routes.
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.Handle("GET /metrics", s.met.handler()) // Prometheus scrape target
+	// Public routes. GET /metrics is NOT here: it lives on its own listener
+	// (metrics_addr, :8081) so an Ingress/Route never exposes it — see metrics.go.
+	mux.HandleFunc("GET /livez", s.handleLivez)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	mux.HandleFunc("GET /healthz", s.handleReadyz)          // alias, kept for Docker HEALTHCHECK / Day-1 demos
 	mux.Handle("GET /static/", http.FileServerFS(staticFS)) // logo SVGs (public)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.HandleFunc("POST /login", s.handleLoginSubmit)
@@ -80,7 +82,7 @@ func (s *server) routes() http.Handler {
 	// Optional access log: when LOG_REQUESTS=true (config log_requests), wrap
 	// everything so each request is logged once. Off by default to keep the
 	// logs quiet; turning it on is a one-env-var demo of an access log.
-	// Request counting for /metrics is always on.
+	// Request counting for /metrics is always on (app port only).
 	var h http.Handler = s.met.countRequests(mux)
 	if s.cfg.LogRequests {
 		h = s.logRequests(h)
@@ -123,7 +125,15 @@ func (r *statusRecorder) WriteHeader(code int) {
 // no roles or permissions: a valid session means full access.
 func (s *server) requireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.loggedIn(r) {
+		ok, err := s.loggedIn(r)
+		if err != nil {
+			// The session could not be CHECKED — that is not the same as "not
+			// logged in". Redirecting to /login would wrongly tell the user they
+			// were logged out, so answer 503 instead (still fail closed).
+			s.dbUnavailable(w, r, err)
+			return
+		}
+		if !ok {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
@@ -133,19 +143,14 @@ func (s *server) requireLogin(next http.Handler) http.Handler {
 
 // loggedIn reports whether the request carries a valid session cookie. The
 // session is looked up in the database (the Store), so it stays valid across
-// restarts. On a store error we fail closed (treat as not logged in) rather
-// than letting the request through.
-func (s *server) loggedIn(r *http.Request) bool {
+// restarts. A non-nil error means the database could not be asked; callers
+// must not treat that as "logged in".
+func (s *server) loggedIn(r *http.Request) (bool, error) {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return false
+		return false, nil // no cookie → simply not logged in
 	}
-	ok, err := s.store.SessionValid(r.Context(), c.Value)
-	if err != nil {
-		s.log.Error("check session", "err", err)
-		return false
-	}
-	return ok
+	return s.store.SessionValid(r.Context(), c.Value)
 }
 
 // ----------------------------------------------------------------------------
@@ -183,7 +188,12 @@ type loginData struct {
 
 func (s *server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	// Already logged in? Skip the form.
-	if s.loggedIn(r) {
+	ok, err := s.loggedIn(r)
+	if err != nil {
+		s.dbUnavailable(w, r, err)
+		return
+	}
+	if ok {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -207,15 +217,14 @@ func (s *server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if err := s.store.CreateSession(r.Context(), token, time.Now().Add(sessionTTL)); err != nil {
+		s.dbUnavailable(w, r, err)
+		return
+	}
 	// Best-effort sweep so expired rows don't accumulate (teaching app — no
 	// background janitor). A failure here must not block a valid login.
 	if err := s.store.DeleteExpiredSessions(r.Context()); err != nil {
 		s.log.Warn("prune expired sessions", "err", err)
-	}
-	if err := s.store.CreateSession(r.Context(), token, time.Now().Add(sessionTTL)); err != nil {
-		s.log.Error("create session", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -251,8 +260,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	todos, err := s.store.List(r.Context())
 	if err != nil {
-		s.log.Error("list todos", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.dbUnavailable(w, r, err)
 		return
 	}
 
@@ -274,8 +282,7 @@ func (s *server) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Add(r.Context(), title); err != nil {
-		s.log.Error("add todo", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.dbUnavailable(w, r, err)
 		return
 	}
 	s.log.Debug("todo added", "title", title)
@@ -288,8 +295,7 @@ func (s *server) handleToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Toggle(r.Context(), id); err != nil {
-		s.log.Error("toggle todo", "id", id, "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.dbUnavailable(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -301,33 +307,62 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Delete(r.Context(), id); err != nil {
-		s.log.Error("delete todo", "id", id, "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.dbUnavailable(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// handleHealthz reports readiness by pinging the store. Returns 200 "ok" on
-// success, 503 otherwise. Public (no login) so the Docker HEALTHCHECK and the
-// Kubernetes liveness/readiness probes can reach it.
-func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+// Health endpoints — public (no login) so probes can reach them.
+//
+// Liveness answers "should the kubelet restart me?" — a missing database is
+// not fixed by a restart, so it must not fail liveness. Readiness answers
+// "should I receive traffic?" — without a database, no.
+
+// handleLivez always answers 200 "ok" and never touches the database: if the
+// process can answer HTTP at all, it is alive. Target of the livenessProbe.
+func (s *server) handleLivez(w http.ResponseWriter, r *http.Request) {
+	writeText(w, http.StatusOK, "ok")
+}
+
+// handleReadyz pings the store: 200 "ok" if the database answers, 503
+// "unavailable" otherwise. Target of the readinessProbe; /healthz is an alias.
+func (s *server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
 	if err := s.store.Ping(ctx); err != nil {
-		s.log.Warn("healthz: store not reachable", "err", err)
-		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		s.log.Warn("readyz: store not reachable", "err", err)
+		writeText(w, http.StatusServiceUnavailable, "unavailable")
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	writeText(w, http.StatusOK, "ok")
 }
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+// dbUnavailable answers a request whose store call failed: 503 (the fault is
+// in a dependency, not in this app) with a small themed error page. The DB
+// error goes to the log — exactly one WARN line per request — never into the
+// HTML. The process keeps running; database/sql reconnects on its own once the
+// database is back.
+func (s *server) dbUnavailable(w http.ResponseWriter, r *http.Request, err error) {
+	s.log.Warn("database unavailable", "path", r.URL.Path, "err", err)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if err := s.tmpl.ExecuteTemplate(w, "error.html", s.base()); err != nil {
+		s.log.Error("render template", "name", "error.html", "err", err)
+	}
+}
+
+// writeText writes a short plain-text response (used by the health endpoints).
+func writeText(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
+}
 
 // render executes a template. html/template escapes interpolated values by
 // default — this is what prevents XSS through a todo title; we never bypass it.

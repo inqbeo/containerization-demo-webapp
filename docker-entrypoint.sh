@@ -32,9 +32,12 @@ else
   # (legacy service-link vars). That would produce listen_addr ":tcp://...:8080"
   # and break the app. (Need a different port anyway? Mount a config file —
   # an existing config wins over this generated one, see above.)
+  # metrics_addr is fixed at :8081 for the same reason (the separate listener
+  # for GET /metrics, never routed through the Ingress).
   cat > "$CONFIG_FILE" <<EOF
 company_name: "${COMPANY_NAME:-ACME Corp}"
 listen_addr: ":8080"
+metrics_addr: ":8081"
 data_dir: "${DATA_DIR:-/data}"
 log_level: "${LOG_LEVEL:-info}"
 log_requests: $( [ "${LOG_REQUESTS:-}" = "true" ] && echo true || echo false )

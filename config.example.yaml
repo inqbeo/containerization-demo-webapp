@@ -5,7 +5,8 @@
 #   CONFIG_FILE=./config.yaml ./todo
 
 company_name: "ACME Corp"     # shown in the UI header
-listen_addr: ":8080"          # HTTP listen address
+listen_addr: ":8080"          # HTTP listen address (the app)
+metrics_addr: ":8081"         # separate listener for GET /metrics; never exposed via Ingress
 data_dir: "./data"            # directory for the SQLite file (todo.db)
 log_level: "info"             # debug | info | warn | error
 log_requests: false           # true → log one line per HTTP request (access log)

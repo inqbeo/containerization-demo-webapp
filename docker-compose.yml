@@ -16,6 +16,7 @@ services:
     build: .
     ports:
       - "${APP_PORT:-8080}:8080"
+      # metrics on 8081 stay inside the compose network
     environment:
       COMPANY_NAME: "Inqbeo (Postgres)"
       DB_DRIVER: "postgres"

@@ -42,4 +42,12 @@ Database backend: {{ .Values.database.type }}{{ if eq .Values.database.type "pos
      kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "todo.fullname" . }} | grep password
 {{- end }}
 
-3. Health probe: GET /healthz (used by the liveness/readiness probes).
+3. Health probes: GET /livez (liveness, never touches the DB) and GET /readyz
+   (readiness, pings the DB; /healthz is an alias).
+
+4. Metrics: GET /metrics on the Service port "metrics" ({{ .Values.service.metricsPort }}) — cluster-internal,
+   NOT reachable through the Ingress/Route/HTTPRoute. Try:
+
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "todo.fullname" . }} 8081:{{ .Values.service.metricsPort }}
+     curl -s http://localhost:8081/metrics | grep -E '^(db_up|todos)'
+

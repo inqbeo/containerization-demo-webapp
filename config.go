@@ -21,8 +21,14 @@ import (
 type Config struct {
 	CompanyName string `yaml:"company_name"`
 	ListenAddr  string `yaml:"listen_addr"`
-	DataDir     string `yaml:"data_dir"`
-	LogLevel    string `yaml:"log_level"`
+
+	// MetricsAddr is the separate listener for GET /metrics (default ":8081").
+	// A second "ops port" keeps metrics off the app port, so an Ingress/Route
+	// never exposes them. Metrics are always on; empty means the default.
+	MetricsAddr string `yaml:"metrics_addr"`
+
+	DataDir  string `yaml:"data_dir"`
+	LogLevel string `yaml:"log_level"`
 
 	// LogRequests, when true, logs one line per HTTP request (method, path,
 	// status, duration). Off by default; driven by the LOG_REQUESTS env var
@@ -42,7 +48,7 @@ type Config struct {
 	// as a Go duration string (e.g. "5s"). This matters in Kubernetes: when the
 	// database is unreachable (a NetworkPolicy blocking egress, a wrong host, a
 	// Pod not up yet), the connect would otherwise block indefinitely with no log
-	// output. The readiness probe then restarts the Pod into CrashLoopBackOff with
+	// output. The liveness probe then restarts the Pod into CrashLoopBackOff with
 	// no clue why. A bounded attempt fails fast and gets logged instead. Default
 	// "5s"; driven by the DB_CONNECT_TIMEOUT env var through the entrypoint.
 	DBConnectTimeout string `yaml:"db_connect_timeout"`
@@ -50,7 +56,7 @@ type Config struct {
 	// AuthUser / AuthPassword guard the UI with HTTP Basic Auth — the lab runs
 	// on public machines, so the app must not be wide open. AuthUser defaults
 	// to "admin". If AuthPassword is empty, main() generates a random one at
-	// startup and logs it once (see auth.go). /healthz is always exempt so the
+	// startup and logs it once (see auth.go). The health endpoints are exempt so the
 	// container/Kubernetes health probes keep working without credentials.
 	AuthUser     string `yaml:"auth_user"`
 	AuthPassword string `yaml:"auth_password"`
@@ -105,6 +111,9 @@ func loadConfig(path string) (Config, error) {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8080"
 	}
+	if cfg.MetricsAddr == "" {
+		cfg.MetricsAddr = ":8081"
+	}
 	if cfg.DataDir == "" {
 		cfg.DataDir = "/data"
 	}
@@ -125,6 +134,11 @@ func loadConfig(path string) (Config, error) {
 		cfg.Theme = "coral"
 	}
 	cfg.Theme = strings.ToLower(strings.TrimSpace(cfg.Theme))
+
+	// The app and the metrics listener need two different addresses.
+	if cfg.MetricsAddr == cfg.ListenAddr {
+		return Config{}, fmt.Errorf("metrics_addr %q must differ from listen_addr", cfg.MetricsAddr)
+	}
 
 	// Validate the log level so we fail fast on typos.
 	if _, ok := parseLogLevel(cfg.LogLevel); !ok {

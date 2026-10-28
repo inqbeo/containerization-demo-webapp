@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -38,6 +39,7 @@ func main() {
 		"config_file", path,
 		"company_name", cfg.CompanyName,
 		"listen_addr", cfg.ListenAddr,
+		"metrics_addr", cfg.MetricsAddr,
 		"data_dir", cfg.DataDir,
 		"db_driver", cfg.DBDriver,
 		"db_connect_timeout", cfg.ConnectTimeout().String(),
@@ -68,22 +70,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpServer := &http.Server{
+	// Two listeners: the app itself, and a separate "ops port" that serves
+	// only GET /metrics (never routed through the Ingress).
+	appServer := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           srv.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	metricsServer := &http.Server{
+		Addr:              cfg.MetricsAddr,
+		Handler:           srv.met.routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
-	// Run the HTTP server in the background; report a clean exit via a channel.
-	serverErr := make(chan error, 1)
-	go func() {
-		log.Info("listening", "addr", cfg.ListenAddr)
-		err := httpServer.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil // normal shutdown
-		}
-		serverErr <- err
-	}()
+	// Run both servers in the background; either one failing (e.g. port
+	// already in use) is reported through the shared channel.
+	serverErr := make(chan error, 2)
+	go serve(log, "app", appServer, serverErr)
+	go serve(log, "metrics", metricsServer, serverErr)
 
 	// Graceful shutdown: the container runtime (and Kubernetes) sends SIGTERM
 	// to ask the process to stop. We catch it, drain in-flight requests, then
@@ -93,23 +97,33 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		if err != nil {
-			log.Error("server error", "err", err)
-			_ = store.Close()
-			os.Exit(1)
-		}
+		log.Error("server error", "err", err)
+		_ = store.Close()
+		os.Exit(1)
 	case sig := <-stop:
 		log.Info("received signal, shutting down", "signal", sig.String())
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := httpServer.Shutdown(ctx); err != nil {
-			log.Error("graceful shutdown failed", "err", err)
+		for _, s := range []*http.Server{appServer, metricsServer} {
+			if err := s.Shutdown(ctx); err != nil {
+				log.Error("graceful shutdown failed", "addr", s.Addr, "err", err)
+			}
 		}
 		if err := store.Close(); err != nil {
 			log.Error("closing store failed", "err", err)
 		}
 		log.Info("shutdown complete")
+	}
+}
+
+// serve runs one HTTP server until it is shut down. A normal shutdown is not
+// reported; any other error (e.g. the port is already in use) goes to errCh so
+// main() can exit non-zero.
+func serve(log *slog.Logger, purpose string, srv *http.Server, errCh chan<- error) {
+	log.Info("listening", "addr", srv.Addr, "purpose", purpose)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		errCh <- fmt.Errorf("%s server on %s: %w", purpose, srv.Addr, err)
 	}
 }

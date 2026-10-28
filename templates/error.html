@@ -1,0 +1,19 @@
+{{define "error.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body data-theme="{{.Theme}}">
+  <!-- Served with HTTP 503 when the database cannot be reached. Deliberately
+       generic: the actual database error goes to the log, never into the HTML. -->
+  <div class="login-wrap">
+    <div>
+      <div class="login-card">
+        <div class="brandbar">{{template "logo" .}}</div>
+        <h1>Database unavailable</h1>
+        <p class="sub">The application is running, but its database is not reachable. Please try again in a moment.</p>
+        <a class="btn block" href="/">Try again</a>
+      </div>
+      <p class="credit">{{.CompanyName}} — TODOs</p>
+    </div>
+  </div>
+</body>
+</html>{{end}}
