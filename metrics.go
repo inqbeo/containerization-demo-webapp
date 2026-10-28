@@ -24,7 +24,7 @@ type metrics struct {
 // process metrics (go_*, process_*) that every Go exporter ships:
 //
 //	http_requests_total{path,status}  counter — one per handled request
-//	todos_total{state}                gauge   — open / done todos, read at scrape time
+//	todos{state}                      gauge   — open / done todos, read at scrape time
 //	db_up                             gauge   — 1 if the database answers a ping, else 0
 func newMetrics(store Store) *metrics {
 	m := &metrics{
@@ -71,12 +71,12 @@ func routeLabel(r *http.Request) string {
 	return r.Pattern
 }
 
-// storeCollector asks the database at scrape time, so todos_total and db_up
+// storeCollector asks the database at scrape time, so todos and db_up
 // are always current without any bookkeeping in the handlers.
 type storeCollector struct{ store Store }
 
 var (
-	todosDesc = prometheus.NewDesc("todos_total", "Number of todos, by state (open/done).", []string{"state"}, nil)
+	todosDesc = prometheus.NewDesc("todos", "Number of todos, by state (open/done).", []string{"state"}, nil)
 	dbUpDesc  = prometheus.NewDesc("db_up", "1 if the database answers a ping, 0 otherwise.", nil, nil)
 )
 

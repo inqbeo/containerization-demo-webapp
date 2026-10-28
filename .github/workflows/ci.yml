@@ -131,7 +131,7 @@ jobs:
         run: |
           curl -fsS http://localhost:8080/metrics > /tmp/metrics.txt
           grep -E '^db_up 1$' /tmp/metrics.txt
-          grep -E '^todos_total\{state="open"\} 1$' /tmp/metrics.txt
+          grep -E '^todos\{state="open"\} 1$' /tmp/metrics.txt
           grep -E '^http_requests_total\{path="/todos",status="303"\}' /tmp/metrics.txt
 
       - name: Wrong password is rejected

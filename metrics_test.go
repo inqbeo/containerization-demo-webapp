@@ -48,8 +48,8 @@ func TestMetrics(t *testing.T) {
 	out := scrape(t, ts)
 	for _, want := range []string{
 		`db_up 1`,
-		`todos_total{state="open"} 1`,
-		`todos_total{state="done"} 1`,
+		`todos{state="open"} 1`,
+		`todos{state="done"} 1`,
 		`http_requests_total{path="/login",status="303"} 1`,
 		`http_requests_total{path="/todos",status="303"} 2`,
 		`http_requests_total{path="/todos/{id}/toggle",status="303"} 1`,

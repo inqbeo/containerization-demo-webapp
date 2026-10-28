@@ -204,7 +204,7 @@ credentials. Besides the standard `go_*` and `process_*` metrics:
 | Metric | Type | Meaning |
 |---|---|---|
 | `http_requests_total{path,status}` | counter | Handled requests. `path` is the **route pattern** (`/todos/{id}/toggle`), not the raw URL, so ids don't explode the series count; 404s are `path="unmatched"`. |
-| `todos_total{state}` | gauge | Todos by `state` (`open` / `done`), read from the DB at scrape time. |
+| `todos{state}` | gauge | Todos by `state` (`open` / `done`), read from the DB at scrape time. |
 | `db_up` | gauge | `1` if the database answers a ping, `0` otherwise. |
 
 Some PromQL to try:
@@ -212,7 +212,7 @@ Some PromQL to try:
 ```promql
 sum by (path) (rate(http_requests_total[5m]))       # requests/s per route
 sum(rate(http_requests_total{status=~"5.."}[5m]))   # error rate
-sum(todos_total)                                    # all todos
+sum(todos)                                          # all todos
 db_up == 0                                          # alert: database unreachable
 ```
 
